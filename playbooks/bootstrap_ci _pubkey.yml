@@ -1,0 +1,25 @@
+# playbooks/bootstrap_ci_pubkey.yml
+---
+- name: Push CI SSH public key to all VMs
+  hosts: all
+  become: true
+  vars:
+    ci_pubkey_path: "{{ lookup('env', 'CI_PUBKEY_PATH') | default('~/ansible-ci.pub', true) }}"
+  tasks:
+    - name: Read CI public key
+      ansible.builtin.set_fact:
+        ci_pubkey: "{{ lookup('file', ci_pubkey_path) }}"
+
+    - name: Ensure .ssh exists
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.ssh"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: Add CI key to authorized_keys
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ ci_pubkey }}"
