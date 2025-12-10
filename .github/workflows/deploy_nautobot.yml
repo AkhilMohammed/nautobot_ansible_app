@@ -27,16 +27,32 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install SSH key for Ansible
+      - name: Install Ansible (for ansible-vault)
+        run: |
+          pip install --upgrade pip
+          pip install ansible
+
+      - name: Decrypt SSH key with Ansible Vault
+        env:
+          VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
+        run: |
+          echo "$VAULT_PASSWORD" > vault_pass.txt
+          ansible-vault decrypt group_vars/dev/vault/ansible-ci \
+            --output=ansible-ci \
+            --vault-password-file vault_pass.txt
+          chmod 600 ansible-ci
+
+      - name: Start ssh-agent and add key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.ANSIBLE_SSH_KEY }}
+          ssh-private-key: |
+            $(cat ansible-ci)
 
       - name: Configure known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
-          # add other VM/node IPs as needed
+          # add other VMs/nodes here
 
       - name: Run Ansible deploy
         env:
