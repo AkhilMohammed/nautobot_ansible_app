@@ -41,16 +41,23 @@ jobs:
             --output=ansible-ci-decrypted \
             --vault-password-file=vault_pass.txt
           chmod 600 ansible-ci-decrypted
-
-      - name: Debug first line of decrypted key
-        run: |
+          echo "=== First line of decrypted key ==="
           head -n 1 ansible-ci-decrypted || echo "no file"
+          echo "=== Last line of decrypted key ==="
+          tail -n 1 ansible-ci-decrypted || echo "no file"
+
+      - name: Read decrypted key into output
+        id: read_key
+        run: |
+          echo "key<<EOF" >> $GITHUB_OUTPUT
+          cat ansible-ci-decrypted >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Start ssh-agent and add key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: |
-            $(cat ansible-ci-decrypted)
+          ssh-private-key: ${{ steps.read_key.outputs.key }}
+          log-public-key: true
 
       - name: Configure known_hosts
         run: |
