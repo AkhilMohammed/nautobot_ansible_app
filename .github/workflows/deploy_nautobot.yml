@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Ansible (for ansible-vault)
+      - name: Install Ansible (for ansible-vault and playbooks)
         run: |
           pip install --upgrade pip
           pip install ansible
@@ -38,24 +38,29 @@ jobs:
         run: |
           echo "$VAULT_PASSWORD" > vault_pass.txt
           ansible-vault decrypt group_vars/dev/vault/ansible-ci \
-            --output=ansible-ci \
-            --vault-password-file vault_pass.txt
-          chmod 600 ansible-ci
+            --output=ansible-ci-decrypted \
+            --vault-password-file=vault_pass.txt
+          chmod 600 ansible-ci-decrypted
+
+      - name: Debug first line of decrypted key
+        run: |
+          head -n 1 ansible-ci-decrypted || echo "no file"
 
       - name: Start ssh-agent and add key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: |
-            $(cat ansible-ci)
+            $(cat ansible-ci-decrypted)
 
       - name: Configure known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
-          # add other VMs/nodes here
+          # add other VM / node IPs here if needed
 
       - name: Run Ansible deploy
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
         run: |
+          chmod +x scripts/deploy.sh
           ./scripts/deploy.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.environment }}"
