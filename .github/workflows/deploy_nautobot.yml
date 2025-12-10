@@ -59,11 +59,11 @@ jobs:
           ssh-private-key: ${{ steps.read_key.outputs.key }}
           log-public-key: true
 
-      - name: Configure known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
-          # add other VM / node IPs here if needed
+      # - name: Configure known_hosts
+      #   run: |
+      #     mkdir -p ~/.ssh
+      #     ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
+      #     # add other VM / node IPs here if needed
 
       - name: Run Ansible deploy
         env:
