@@ -1,0 +1,63 @@
+---
+- name: Roll back Nautobot and plugins on VMs
+  hosts: dev_vm,prod_vm
+  become: true
+  gather_facts: true
+
+  vars:
+    environment: "{{ environment | default(hostvars[inventory_hostname].environment) }}"
+
+  vars_files:
+    - "../group_vars/{{ environment }}/nautobot.yml"
+    - "../group_vars/{{ environment }}/vault.yml"
+    # Optional: file that pins rollback versions
+    - "../group_vars/{{ environment }}/rollback.yml"
+
+  pre_tasks:
+    - name: Show rollback target
+      ansible.builtin.debug:
+        msg:
+          - "Rolling back Nautobot on {{ inventory_hostname }}"
+          - "From version: {{ nautobot_version }}"
+          - "To version: {{ rollback_nautobot_version | default('UNKNOWN') }}"
+      tags: [always]
+
+    - name: Set versions to rollback versions
+      ansible.builtin.set_fact:
+        nautobot_version: "{{ rollback_nautobot_version | default(nautobot_version) }}"
+        nautobot_git_packages: "{{ rollback_git_packages | default(nautobot_git_packages) }}"
+      tags: [always]
+
+  roles:
+    # DB/Redis usually unchanged, but can be included if schema rollback is needed
+    - role: vm_nautobot_app
+      tags: [rollback, nautobot]
+
+    - role: vm_nautobot_worker
+      tags: [rollback, worker]
+
+    - role: vm_nautobot_scheduler
+      tags: [rollback, scheduler]
+
+  post_tasks:
+    - name: Verify services after rollback
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ nautobot_services }}"
+      tags: [verify]
+
+    - name: Check Nautobot API after rollback
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:8000/api/"
+        method: GET
+        status_code: 200
+      register: api_check
+      retries: 10
+      delay: 6
+      until: api_check.status == 200
+      tags: [verify]
+
+    - name: Show rollback completion
+      ansible.builtin.debug:
+        msg: "Rollback complete on {{ inventory_hostname }}, now running Nautobot {{ nautobot_version }}"

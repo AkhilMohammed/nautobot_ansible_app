@@ -1,0 +1,34 @@
+---
+- name: Deploy nautobot-worker systemd service
+  ansible.builtin.copy:
+    dest: "{{ systemd_path }}/nautobot-worker.service"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Nautobot Celery Worker
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User={{ nautobot_user }}
+      Group={{ nautobot_group }}
+      WorkingDirectory={{ nautobot_root }}
+      Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
+      ExecStart={{ nautobot_venv }}/bin/celery --app nautobot.core.celery worker \
+                --loglevel {{ nautobot_log_level }} \
+                --concurrency {{ nautobot_celery_worker_count }} \
+                --autoscale={{ nautobot_celery_worker_autoscale }}
+      Restart=on-failure
+      RestartSec=30s
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable and start nautobot-worker service
+  ansible.builtin.systemd:
+    name: nautobot-worker
+    enabled: yes
+    state: started
+    daemon_reload: yes

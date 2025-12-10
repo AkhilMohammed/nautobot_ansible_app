@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nautobot-scheduler
+  namespace: nautobot
+  labels:
+    app: nautobot
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nautobot
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: nautobot
+        component: scheduler
+    spec:
+      initContainers:
+      - name: install-plugins
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update && apt-get install -y git build-essential libpq-dev
+            python -m venv /opt/nautobot/venv
+            source /opt/nautobot/venv/bin/activate
+            pip install --upgrade pip wheel
+            while IFS= read -r line; do [ -z "$line" ] && continue; pip install "$line"; done < <(echo "$PIP_PACKAGES")
+            while IFS= read -r line; do [ -z "$line" ] && continue; pip install "$line"; done < <(echo "$GIT_PACKAGES")
+        env:
+        - name: PIP_PACKAGES
+          valueFrom:
+            configMapKeyRef:
+              name: nautobot-config
+              key: PIP_PACKAGES
+        - name: GIT_PACKAGES
+          valueFrom:
+            configMapKeyRef:
+              name: nautobot-config
+              key: GIT_PACKAGES
+        volumeMounts:
+        - name: nautobot-venv
+          mountPath: /opt/nautobot
+      
+      containers:
+      - name: scheduler
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            source /opt/nautobot/venv/bin/activate
+            celery --app nautobot.core.celery beat --loglevel INFO
+        envFrom:
+        - configMapRef:
+            name: nautobot-config
+        env:
+        - name: NAUTOBOT_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-secrets
+              key: db-password
+        volumeMounts:
+        - name: nautobot-venv
+          mountPath: /opt/nautobot
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      volumes:
+      - name: nautobot-venv
+        emptyDir: {}

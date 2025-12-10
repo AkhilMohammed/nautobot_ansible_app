@@ -1,0 +1,31 @@
+---
+# Host‑specific variables for primary prod Nautobot VM
+
+ansible_host: 172.17.228.201
+ansible_user: ubuntu
+ansible_python_interpreter: /usr/bin/python3
+
+environment: prod
+deployment_type: vm
+
+nautobot_env_name: "prod"
+nautobot_site_name: "Prod Nautobot Site"
+nautobot_instance_role: "primary"
+
+# Example: point to HA Postgres/Redis endpoints (can also live only in group_vars/prod)
+nautobot_db:
+  engine: "django.db.backends.postgresql"
+  name: "nautobot"
+  user: "nautobot"
+  password: "{{ vault_nautobot_db_password }}"
+  host: "pg-cluster.prod.internal"
+  port: 5432
+  conn_max_age: 600
+  ssl_mode: "require"
+
+nautobot_redis:
+  host: "redis-sentinel.prod.internal"
+  port: 26379
+  database: 1
+  password: "{{ vault_redis_password }}"
+  sentinel_service: "nautobot-redis"

@@ -1,0 +1,14 @@
+all:
+  children:
+    prod_vm:
+      hosts:
+        prod-nautobot-01:
+          ansible_host: 172.17.228.201
+          ansible_user: ubuntu
+          environment: prod
+          deployment_type: vm
+        prod-nautobot-02:
+          ansible_host: 172.17.228.202
+          ansible_user: ubuntu
+          environment: prod
+          deployment_type: vm

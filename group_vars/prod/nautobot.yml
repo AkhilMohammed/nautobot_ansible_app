@@ -1,0 +1,110 @@
+---
+# Production Environment Configuration
+
+nautobot_environment: prod
+nautobot_debug: false
+nautobot_log_level: INFO
+
+# Database Configuration (HA Postgres cluster)
+nautobot_db:
+  engine: "django.db.backends.postgresql"
+  name: "nautobot"
+  user: "nautobot"
+  password: "{{ vault_nautobot_db_password }}"
+  host: "prod-pg-cluster.internal"
+  port: 5432
+  conn_max_age: 600
+  ssl_mode: "require"
+  options:
+    sslrootcert: "/etc/ssl/certs/ca-bundle.crt"
+
+# Redis Configuration (Sentinel)
+nautobot_redis:
+  host: "prod-redis-sentinel.internal"
+  port: 26379
+  database: 1
+  password: "{{ vault_redis_password }}"
+  sentinel_service: "nautobot-redis"
+
+# Celery Configuration
+nautobot_celery_broker_url: "sentinel://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.sentinel_service }};sentinel_kwargs={'password':'{{ vault_redis_password }}'}"
+nautobot_celery_result_backend: "sentinel://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.sentinel_service }};sentinel_kwargs={'password':'{{ vault_redis_password }}'}"
+
+# Allowed Hosts
+nautobot_allowed_hosts:
+  - "nautobot.prod.internal"
+  - "nautobot.yourcompany.com"
+
+# SECRET KEY (from vault)
+nautobot_secret_key: "{{ vault_nautobot_secret_key }}"
+
+# ===========================
+# PLUGINS INSTALLATION - PRODUCTION
+# ===========================
+
+# Use pip packages for stable dependencies
+nautobot_pip_packages:
+  - name: "social-auth-core[openidconnect]"
+    version: "4.3.0"
+  
+  - name: "netutils"
+    version: "1.10.0"
+  
+  - name: "azure-storage-blob"
+    version: "12.21.0"
+
+# Production uses TAGGED releases from Git (or published packages)
+nautobot_git_packages:
+  # Your custom plugins - use release tags in production
+  - name: "git+https://{{ git_auth_url }}{{ git_base_url }}/ITFP-Nautobot/_git/nautobot-plugin-a@v1.2.0#egg=nautobot-plugin-a"
+    version: "1.2.0"
+    module_name: "nautobot_plugin_a"
+  
+  - name: "git+https://{{ git_auth_url }}{{ git_base_url }}/ITFP-Nautobot/_git/nautobot-plugin-b@v1.0.5#egg=nautobot-plugin-b"
+    version: "1.0.5"
+    module_name: "nautobot_plugin_b"
+
+  # NTC plugins - use stable release tags
+  - name: "git+https://github.com/nautobot/nautobot-app-ssot.git@v2.6.0#egg=nautobot-ssot"
+    version: "2.6.0"
+    module_name: "nautobot_ssot"
+  
+  - name: "git+https://github.com/nautobot/nautobot-app-golden-config.git@v2.1.0#egg=nautobot-golden-config"
+    version: "2.1.0"
+    module_name: "nautobot_golden_config"
+  
+  - name: "git+https://github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@v2.1.1#egg=nautobot-device-lifecycle-mgmt"
+    version: "2.1.1"
+    module_name: "nautobot_device_lifecycle_mgmt"
+
+# Plugin Configuration (production settings)
+nautobot_plugins_config:
+  nautobot_plugin_a:
+    enable_feature_x: false
+    api_timeout: 60
+    debug_mode: false
+  
+  nautobot_plugin_b:
+    batch_size: 500
+    enable_sync: true
+  
+  nautobot_ssot:
+    hide_example_jobs: true
+  
+  nautobot_golden_config:
+    enable_backup: true
+    enable_compliance: true
+    enable_intended: true
+    per_feature_bar_width: 0.3
+    per_feature_width: 13
+    per_feature_height: 4
+
+# Celery worker configuration (HA sizing)
+nautobot_celery_worker_count: 8
+nautobot_celery_worker_autoscale: "16,4"
+
+# Service names
+nautobot_services:
+  - nautobot-app
+  - nautobot-worker
+  - nautobot-scheduler

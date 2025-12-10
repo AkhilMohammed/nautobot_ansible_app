@@ -1,0 +1,20 @@
+---
+# Host‑specific variables for dev Nautobot VM
+
+ansible_host: 172.17.228.201
+ansible_user: admin1
+ansible_python_interpreter: /usr/bin/python3
+
+deploy_env: dev
+# deployment_type: vm
+
+# # Optional per‑host overrides
+# nautobot_env_name: "dev"
+# nautobot_site_name: "Dev Nautobot Site"
+# nautobot_instance_role: "primary"
+
+# If Postgres/Redis are remote for dev, override here (else localhost from group_vars)
+# nautobot_db:
+#   host: "dev-db.internal"
+# nautobot_redis:
+#   host: "dev-redis.internal"

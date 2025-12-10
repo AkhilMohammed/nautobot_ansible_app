@@ -1,0 +1,9 @@
+---
+# handlers file for vm_redis
+
+- name: Restart redis-server
+  ansible.builtin.systemd:
+    name: redis-server
+    state: restarted
+    enabled: yes
+    daemon_reload: yes

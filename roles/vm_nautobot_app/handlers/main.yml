@@ -1,0 +1,22 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Restart nautobot-app
+  ansible.builtin.systemd:
+    name: nautobot-app
+    state: restarted
+    enabled: yes
+
+- name: Restart nautobot-worker
+  ansible.builtin.systemd:
+    name: nautobot-worker
+    state: restarted
+    enabled: yes
+
+- name: Restart nautobot-scheduler
+  ansible.builtin.systemd:
+    name: nautobot-scheduler
+    state: restarted
+    enabled: yes

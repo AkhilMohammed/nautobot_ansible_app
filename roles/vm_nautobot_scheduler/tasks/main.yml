@@ -1,0 +1,32 @@
+---
+- name: Deploy nautobot-scheduler systemd service
+  ansible.builtin.copy:
+    dest: "{{ systemd_path }}/nautobot-scheduler.service"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Nautobot Celery Beat Scheduler
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User={{ nautobot_user }}
+      Group={{ nautobot_group }}
+      WorkingDirectory={{ nautobot_root }}
+      Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
+      ExecStart={{ nautobot_venv }}/bin/celery --app nautobot.core.celery beat \
+                --loglevel {{ nautobot_log_level }}
+      Restart=on-failure
+      RestartSec=30s
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable and start nautobot-scheduler service
+  ansible.builtin.systemd:
+    name: nautobot-scheduler
+    enabled: yes
+    state: started
+    daemon_reload: yes

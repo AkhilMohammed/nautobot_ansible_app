@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nautobot-app
+  namespace: nautobot
+  labels:
+    app: nautobot
+    component: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nautobot
+      component: app
+  template:
+    metadata:
+      labels:
+        app: nautobot
+        component: app
+    spec:
+      initContainers:
+      - name: install-plugins
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            set -e
+            apt-get update && apt-get install -y git build-essential libpq-dev
+            python -m venv /opt/nautobot/venv
+            source /opt/nautobot/venv/bin/activate
+            pip install --upgrade pip wheel
+            
+            # Install pip packages
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              pip install "$line"
+            done < <(echo "$PIP_PACKAGES")
+            
+            # Install git packages with auth
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              pip install "$line"
+            done < <(echo "$GIT_PACKAGES")
+            
+            # Run migrations
+            export NAUTOBOT_CONFIG=/opt/nautobot/nautobot_config.py
+            nautobot-server migrate
+            nautobot-server collectstatic --no-input
+        env:
+        - name: PIP_PACKAGES
+          valueFrom:
+            configMapKeyRef:
+              name: nautobot-config
+              key: PIP_PACKAGES
+        - name: GIT_PACKAGES
+          valueFrom:
+            configMapKeyRef:
+              name: nautobot-config
+              key: GIT_PACKAGES
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-secrets
+              key: git-username
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-secrets
+              key: git-token
+        volumeMounts:
+        - name: nautobot-venv
+          mountPath: /opt/nautobot
+      
+      containers:
+      - name: nautobot
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            source /opt/nautobot/venv/bin/activate
+            gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 300 nautobot.core.wsgi:application
+        ports:
+        - containerPort: 8000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: nautobot-config
+        env:
+        - name: NAUTOBOT_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-secrets
+              key: db-password
+        - name: NAUTOBOT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-secrets
+              key: secret-key
+        volumeMounts:
+        - name: nautobot-venv
+          mountPath: /opt/nautobot
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+      
+      volumes:
+      - name: nautobot-venv
+        emptyDir: {}

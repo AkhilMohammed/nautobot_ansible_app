@@ -1,0 +1,136 @@
+---
+# Development Environment Configuration
+
+nautobot_user: "nautobot"
+nautobot_group: "nautobot"
+nautobot_root: "/opt/nautobot"
+nautobot_venv: "{{ nautobot_root }}/venv"
+nautobot_config_path: "{{ nautobot_root }}/nautobot_config.py"
+nautobot_logs_path: "{{ nautobot_root }}/logs"
+nautobot_media_path: "{{ nautobot_root }}/media"
+nautobot_static_path: "{{ nautobot_root }}/static"
+nautobot_git_path: "{{ nautobot_root }}/git"
+nautobot_git_root: "{{ nautobot_root }}/.nautobot"
+python_version: "python3.11"
+nautobot_environment: dev
+nautobot_debug: true
+nautobot_log_level: DEBUG
+nautobot_version: "2.4.7"
+
+systemd_path: "/etc/systemd/system"
+
+# Database Configuration
+nautobot_db:
+  engine: "django.db.backends.postgresql"
+  name: "nautobot_dev"
+  user: "nautobot_dev"
+  password: "{{ vault_nautobot_db_password }}"
+  host: "localhost"  # or dev-postgres.internal
+  port: 5432
+  conn_max_age: 300
+
+# Redis Configuration
+nautobot_redis:
+  host: "localhost"  # or dev-redis.internal
+  port: 6379
+  database: 0
+  password: ""  # empty for dev, use vault_redis_password for secured
+
+# Celery Configuration
+nautobot_celery_broker_url: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database }}"
+nautobot_celery_result_backend: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
+
+# Allowed Hosts
+# nautobot_allowed_hosts:
+#   - "localhost"
+#   - "127.0.0.1"
+#   - "dev-nautobot.internal"
+#   - "172.17.228.201"
+#   - "*.dev.internal"
+
+# Base hosts allowed everywhere
+nautobot_allowed_hosts_base:
+  - "localhost"
+  - "127.0.0.1"
+
+# Dynamically add this host's IP / inventory name
+nautobot_allowed_hosts: >-
+  {{
+    nautobot_allowed_hosts_base
+    + [ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) ]
+  }}
+
+
+# SECRET KEY (dev only - use vault in prod)
+nautobot_secret_key: "dev-secret-key-change-in-production"
+
+# ===========================
+# PLUGINS INSTALLATION
+# ===========================
+
+# This is for installing packages directly from internal repositories
+nautobot_pip_packages:
+  # Core dependencies
+  - name: "social-auth-core[openidconnect]"
+    version: "4.3.0"
+  
+  - name: "netutils"
+    version: "1.10.0"
+  
+  - name: "azure-storage-blob"
+    version: "12.21.0"  
+
+# Azure DevOps is used - runner job synced from Git repo
+# Your two custom plugins installed from Git branches
+nautobot_git_packages:
+  # Plugin 1 - Your first custom plugin (dev branch)
+  - name: "git+https://github.com/AkhilMohammed/nautobot-golden-config.git@master#egg=nautobot-golden-config"
+    version: "develop"
+    module_name: "nautobot_golden_config"  # Python import name
+  
+  # Plugin 2 - Your second custom plugin (dev branch)
+  - name: "git+https://github.com/AkhilMohammed/nautobot-plugin-device-tracker.git@master#egg=nautobot-plugin-example"
+    version: "develop"
+    module_name: "nautobot_plugin_example"
+
+  # Official NTC plugins from GitHub (develop branch)
+  - name: "git+https://github.com/nautobot/nautobot-app-ssot.git@develop#egg=nautobot-ssot"
+    version: "develop"
+    module_name: "nautobot_ssot"
+  
+  - name: "git+https://github.com/nautobot/nautobot-app-golden-config.git@develop#egg=nautobot-golden-config"
+    version: "develop"
+    module_name: "nautobot_golden_config"
+  
+  - name: "git+https://github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt"
+    version: "develop"
+    module_name: "nautobot_device_lifecycle_mgmt"
+
+# Plugin Configuration
+nautobot_plugins_config:
+  nautobot_plugin_a:
+    enable_feature_x: true
+    api_timeout: 30
+    debug_mode: true
+  
+  nautobot_plugin_b:
+    batch_size: 100
+    enable_sync: true
+  
+  nautobot_ssot:
+    hide_example_jobs: true
+  
+  nautobot_golden_config:
+    enable_backup: true
+    enable_compliance: true
+    enable_intended: true
+
+# Celery worker configuration
+nautobot_celery_worker_count: 2
+nautobot_celery_worker_autoscale: "4,2"
+
+# Service names
+nautobot_services:
+  - nautobot-app
+  - nautobot-worker
+  - nautobot-scheduler

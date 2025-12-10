@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nautobot-config
+  namespace: nautobot
+data:
+  NAUTOBOT_DB_ENGINE: "{{ nautobot_db.engine }}"
+  NAUTOBOT_DB_NAME: "{{ nautobot_db.name }}"
+  NAUTOBOT_DB_USER: "{{ nautobot_db.user }}"
+  NAUTOBOT_DB_HOST: "{{ nautobot_db.host }}"
+  NAUTOBOT_DB_PORT: "{{ nautobot_db.port }}"
+  NAUTOBOT_REDIS_HOST: "{{ nautobot_redis.host }}"
+  NAUTOBOT_REDIS_PORT: "{{ nautobot_redis.port }}"
+  NAUTOBOT_REDIS_DATABASE: "{{ nautobot_redis.database }}"
+  NAUTOBOT_DEBUG: "{{ nautobot_debug | string }}"
+  NAUTOBOT_LOG_LEVEL: "{{ nautobot_log_level }}"
+  NAUTOBOT_ALLOWED_HOSTS: "{{ nautobot_allowed_hosts | join(',') }}"
+  
+  # Plugin list
+  NAUTOBOT_PLUGINS: |
+    [
+    {% for plugin in nautobot_git_packages %}
+      "{{ plugin.module_name }}"{{ "," if not loop.last else "" }}
+    {% endfor %}
+    ]
+  
+  # Pip packages to install
+  PIP_PACKAGES: |
+    nautobot[postgres,redis]=={{ nautobot_version }}
+{% for pkg in nautobot_pip_packages %}
+    {{ pkg.name }}=={{ pkg.version }}
+{% endfor %}
+  
+  # Git packages to install
+  GIT_PACKAGES: |
+{% for pkg in nautobot_git_packages %}
+    {{ pkg.name }}
+{% endfor %}

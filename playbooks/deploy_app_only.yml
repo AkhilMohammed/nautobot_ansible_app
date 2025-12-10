@@ -1,0 +1,39 @@
+---
+- name: Deploy Nautobot Full Stack on VM
+  hosts: dev_vm,prod_vm
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/{{ environment }}/nautobot.yml"
+    - "../group_vars/{{ environment }}/vault.yml"
+
+  pre_tasks:
+    - name: Display deployment info
+      debug:
+        msg: "Deploying Nautobot {{ nautobot_version }} to {{ inventory_hostname }} ({{ environment }})"
+
+  roles:
+    - role: vm_postgres
+      tags: [postgres, infra]
+    
+    - role: vm_redis
+      tags: [redis, infra]
+    
+    - role: vm_nautobot_app
+      tags: [nautobot, app]
+    
+    - role: vm_nautobot_worker
+      tags: [nautobot, worker]
+    
+    - role: vm_nautobot_scheduler
+      tags: [nautobot, scheduler]
+
+  post_tasks:
+    - name: Verify all services are running
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ nautobot_services }}"
+      tags: verify

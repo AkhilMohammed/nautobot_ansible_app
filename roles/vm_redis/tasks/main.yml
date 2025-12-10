@@ -1,0 +1,64 @@
+# ---
+# # tasks file for vm_redis
+
+# - name: Install Redis server
+#   ansible.builtin.apt:
+#     name: redis-server
+#     state: present
+#     update_cache: yes
+#   tags: redis
+
+# - name: Ensure Redis service is enabled and started
+#   ansible.builtin.systemd:
+#     name: redis-server
+#     state: started
+#     enabled: yes
+#   tags: redis
+
+# # Optional: drop a custom redis.conf if you need
+# # - name: Deploy redis.conf
+# #   ansible.builtin.template:
+# #     src: redis.conf.j2
+# #     dest: /etc/redis/redis.conf
+# #     owner: root
+# #     group: root
+# #     mode: "0644"
+# #   notify: Restart redis-server
+# #   tags: redis
+
+# - name: Flush handlers for Redis changes
+#   ansible.builtin.meta: flush_handlers
+
+---
+# Detect if Docker is already installed
+- name: Check if Docker is installed
+  ansible.builtin.command: which docker
+  register: docker_check
+  ignore_errors: true
+  changed_when: false
+
+# Install Docker only if missing
+- name: Install Docker engine when not present
+  ansible.builtin.apt:
+    name:
+      - docker.io
+    state: present
+    update_cache: yes
+  when: docker_check.rc != 0
+
+# Ensure Docker service is running
+- name: Ensure Docker service is running
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Run Redis container for Nautobot
+  community.docker.docker_container:
+    name: nautobot-redis
+    image: redis:7-alpine
+    state: started
+    restart_policy: always
+    command: ["redis-server", "--appendonly", "yes"]
+    published_ports:
+      - "{{ nautobot_redis.port | default(6379) }}:6379"

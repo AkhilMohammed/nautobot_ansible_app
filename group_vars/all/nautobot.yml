@@ -1,0 +1,39 @@
+---
+# Global Nautobot Configuration - applies to all environments
+
+# System Configuration
+nautobot_user: "nautobot"
+nautobot_group: "nautobot"
+nautobot_root: "/opt/nautobot"
+nautobot_venv: "{{ nautobot_root }}/venv"
+nautobot_config_path: "{{ nautobot_root }}/nautobot_config.py"
+nautobot_logs_path: "{{ nautobot_root }}/logs"
+nautobot_media_path: "{{ nautobot_root }}/media"
+nautobot_static_path: "{{ nautobot_root }}/static"
+nautobot_git_path: "{{ nautobot_root }}/git"
+
+# Python Configuration
+python_version: "python3.11"
+pip_extra_args: "--no-cache-dir"
+
+systemd_path: "/etc/systemd/system"
+
+
+# Git Authentication (will be overridden by vault in each env)
+git_username: "{{ vault_git_username }}"
+git_token: "{{ vault_git_token }}"
+git_auth_url: "{{ git_username }}:{{ git_token }}@"
+
+# Base URL for Git repos (Azure DevOps or GitHub)
+# For Azure DevOps: dev.azure.com/yourorg
+# For GitHub: github.com/yourorg
+git_base_url: "dev.azure.com/yourcompany"
+
+# Nautobot Core Version
+nautobot_version: "2.4.7"
+
+# Common plugin list structure (overridden per environment)
+nautobot_pip_packages: []
+
+# Common settings
+systemd_path: "/etc/systemd/system"

@@ -1,0 +1,45 @@
+name: Deploy Nautobot
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Deployment mode"
+        required: true
+        type: choice
+        options: [standalone, ha]
+      environment:
+        description: "Environment"
+        required: true
+        type: choice
+        options: [dev, prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install SSH key for Ansible
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.ANSIBLE_SSH_KEY }}
+
+      - name: Configure known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
+          # add other VM/node IPs as needed
+
+      - name: Run Ansible deploy
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ./scripts/deploy.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.environment }}"

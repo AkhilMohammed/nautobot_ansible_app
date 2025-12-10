@@ -1,0 +1,51 @@
+---
+- name: Ensure namespace exists
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: nautobot
+
+- name: Create Nautobot secrets
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: nautobot-secrets
+        namespace: nautobot
+      type: Opaque
+      stringData:
+        db-password: "{{ vault_nautobot_db_password }}"
+        secret-key: "{{ vault_nautobot_secret_key }}"
+        git-username: "{{ vault_git_username }}"
+        git-token: "{{ vault_git_token }}"
+
+- name: Apply Nautobot ConfigMap
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    template: nautobot-configmap.yaml.j2
+
+- name: Deploy Nautobot app
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    template: nautobot-app-deployment.yaml.j2
+
+- name: Deploy Nautobot worker
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    template: nautobot-worker-deployment.yaml.j2
+
+- name: Deploy Nautobot scheduler
+  kubernetes.core.k8s:
+    kubeconfig_path: "{{ kubeconfig_path }}"
+    state: present
+    template: nautobot-scheduler-deployment.yaml.j2

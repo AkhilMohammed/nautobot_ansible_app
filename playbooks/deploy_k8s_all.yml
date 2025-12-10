@@ -1,0 +1,26 @@
+---
+- name: Deploy Nautobot to Kubernetes (HA)
+  hosts: dev_k8s,prod_k8s
+  gather_facts: false
+
+  vars_files:
+    - "../group_vars/{{ environment }}/nautobot.yml"
+    - "../group_vars/{{ environment }}/vault.yml"
+
+  pre_tasks:
+    - name: Display deployment info
+      debug:
+        msg: "Deploying Nautobot {{ nautobot_version }} to K8s cluster ({{ environment }})"
+
+  roles:
+    - role: k8s_namespace
+      tags: [k8s, namespace]
+    
+    - role: k8s_postgres
+      tags: [k8s, postgres]
+    
+    - role: k8s_redis
+      tags: [k8s, redis]
+    
+    - role: k8s_nautobot
+      tags: [k8s, nautobot]

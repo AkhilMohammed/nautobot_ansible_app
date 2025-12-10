@@ -1,0 +1,81 @@
+# ---
+# # tasks file for vm_postgres
+
+# - name: Install PostgreSQL server packages
+#   ansible.builtin.apt:
+#     name:
+#       - postgresql
+#       - postgresql-client
+#       - postgresql-contrib
+#       - python3-psycopg2
+#     state: present
+#     update_cache: yes
+#   tags: postgres
+
+# - name: Ensure PostgreSQL service is enabled and started
+#   ansible.builtin.systemd:
+#     name: postgresql
+#     state: started
+#     enabled: yes
+#   tags: postgres
+
+# # Optional: create Nautobot DB and user if DB is local
+# - name: Create Nautobot PostgreSQL database
+#   community.postgresql.postgresql_db:
+#     name: "{{ nautobot_db.name }}"
+#     state: present
+#   become_user: postgres
+#   when: nautobot_db.host in ['localhost', '127.0.0.1']
+#   tags: postgres
+
+# - name: Create Nautobot PostgreSQL user
+#   community.postgresql.postgresql_user:
+#     name: "{{ nautobot_db.user }}"
+#     password: "{{ nautobot_db.password }}"
+#     db: "{{ nautobot_db.name }}"
+#     priv: "ALL"
+#     state: present
+#   become_user: postgres
+#   when: nautobot_db.host in ['localhost', '127.0.0.1']
+#   tags: postgres
+
+# - name: Reload PostgreSQL if configuration changed
+#   ansible.builtin.meta: flush_handlers
+---
+# Detect if Docker is already installed
+- name: Check if Docker is installed
+  ansible.builtin.command: which docker
+  register: docker_check
+  ignore_errors: true
+  changed_when: false
+
+# Install Docker only if missing
+- name: Install Docker engine when not present
+  ansible.builtin.apt:
+    name:
+      - docker.io
+    state: present
+    update_cache: yes
+  when: docker_check.rc != 0
+
+# Ensure Docker service is running
+- name: Ensure Docker service is running
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Run Postgres container for Nautobot
+  community.docker.docker_container:
+    name: nautobot-postgres
+    image: postgres:15
+    state: started
+    restart_policy: always
+    env:
+      POSTGRES_DB: "{{ nautobot_db.name }}"
+      POSTGRES_USER: "{{ nautobot_db.user }}"
+      POSTGRES_PASSWORD: "{{ nautobot_db.password }}"
+    volumes:
+      - /var/lib/postgresql/nautobot-data:/var/lib/postgresql/data
+    published_ports:
+      - "{{ nautobot_db.port | default(5432) }}:5432"
