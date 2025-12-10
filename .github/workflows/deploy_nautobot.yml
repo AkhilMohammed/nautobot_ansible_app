@@ -68,6 +68,7 @@ jobs:
       - name: Run Ansible deploy
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_VAULT_PASSWORD_FILE: "./vault_pass.txt"
         run: |
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.environment }}"
