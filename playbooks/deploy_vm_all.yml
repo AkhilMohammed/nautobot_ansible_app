@@ -2,6 +2,8 @@
 - name: Deploy Nautobot full stack on VMs
   hosts: dev-nautobot-01 
   become: true
+  connection: local
+  become_method: sudo
   gather_facts: true
 
   vars:
