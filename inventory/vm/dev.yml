@@ -3,7 +3,7 @@ all:
     dev_vm:
       hosts:
         dev-nautobot-01:
-          ansible_host: 172.17.228.201
+          ansible_host: localhost
           ansible_user: admin1
           deploy_env: dev
           deployment_type: vm
