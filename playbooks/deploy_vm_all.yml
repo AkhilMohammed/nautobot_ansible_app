@@ -1,6 +1,6 @@
 ---
 - name: Deploy Nautobot full stack on VMs
-  hosts: dev_vm,prod_vm
+  hosts: dev-nautobot-01 
   become: true
   gather_facts: true
 
