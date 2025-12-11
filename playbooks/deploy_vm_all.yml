@@ -1,7 +1,7 @@
 ---
 - name: Deploy Nautobot full stack on VMs
   hosts: dev_vm,prod_vm
-  become: true
+  become: false
   gather_facts: true
 
   vars:
