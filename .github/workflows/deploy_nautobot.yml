@@ -13,6 +13,30 @@ on:
         required: true
         type: choice
         options: [dev, prod]
+      standalone_ip:
+        description: "Standalone VM IP (for mode=standalone)"
+        required: false
+        type: string
+      app_ip:
+        description: "Nautobot app VM IP (for mode=ha)"
+        required: false
+        type: string
+      worker_ip:
+        description: "Nautobot worker VM IP (for mode=ha)"
+        required: false
+        type: string
+      scheduler_ip:
+        description: "Nautobot scheduler VM IP (for mode=ha)"
+        required: false
+        type: string
+      postgres_ip:
+        description: "Postgres VM IP (for mode=ha)"
+        required: false
+        type: string
+      redis_ip:
+        description: "Redis VM IP (for mode=ha)"
+        required: false
+        type: string
 
 jobs:
   deploy:
