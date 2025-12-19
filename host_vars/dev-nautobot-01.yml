@@ -1,12 +1,12 @@
 # ---
-# # Host‑specific variables for dev Nautobot VM
+# Host‑specific variables for dev Nautobot VM
 
-# ansible_host: 172.17.228.201
-# ansible_user: admin1
-# ansible_python_interpreter: /usr/bin/python3
+ansible_host: 172.17.228.202
+ansible_user: admin1
+ansible_python_interpreter: /usr/bin/python3
 
-# deploy_env: dev
-# # deployment_type: vm
+deploy_env: dev
+deployment_type: vm
 
 # # # Optional per‑host overrides
 # # nautobot_env_name: "dev"
@@ -22,8 +22,8 @@
 ---
 # Host‑specific variables for dev Nautobot VM
 
-ansible_connection: local
-ansible_python_interpreter: /usr/bin/python3
+# ansible_connection: local
+# ansible_python_interpreter: /usr/bin/python3
 
-deploy_env: dev
-# deployment_type: vm
+# deploy_env: dev
+# # deployment_type: vm
