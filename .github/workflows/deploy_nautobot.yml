@@ -1,3 +1,102 @@
+# name: Deploy Nautobot
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       mode:
+#         description: "Deployment mode"
+#         required: true
+#         type: choice
+#         options: [standalone, ha]
+#       environment:
+#         description: "Environment"
+#         required: true
+#         type: choice
+#         options: [dev, prod]
+#       standalone_ip:
+#         description: "Standalone VM IP (for mode=standalone)"
+#         required: false
+#         type: string
+#       app_ip:
+#         description: "Nautobot app VM IP (for mode=ha)"
+#         required: false
+#         type: string
+#       worker_ip:
+#         description: "Nautobot worker VM IP (for mode=ha)"
+#         required: false
+#         type: string
+#       scheduler_ip:
+#         description: "Nautobot scheduler VM IP (for mode=ha)"
+#         required: false
+#         type: string
+#       postgres_ip:
+#         description: "Postgres VM IP (for mode=ha)"
+#         required: false
+#         type: string
+#       redis_ip:
+#         description: "Redis VM IP (for mode=ha)"
+#         required: false
+#         type: string
+
+# jobs:
+#   deploy:
+#     runs-on: self-hosted
+
+#     steps:
+#       - name: Checkout repo
+#         uses: actions/checkout@v4
+
+#       - name: Set up Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.11"
+
+#       - name: Install Ansible (for ansible-vault and playbooks)
+#         run: |
+#           pip install --upgrade pip
+#           pip install ansible
+
+#       - name: Decrypt SSH key with Ansible Vault
+#         env:
+#           VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
+#         run: |
+#           echo "$VAULT_PASSWORD" > vault_pass.txt
+#           ansible-vault decrypt group_vars/dev/vault/ansible-ci \
+#             --output=ansible-ci-decrypted \
+#             --vault-password-file=vault_pass.txt
+#           chmod 600 ansible-ci-decrypted
+#           echo "=== First line of decrypted key ==="
+#           head -n 1 ansible-ci-decrypted || echo "no file"
+#           echo "=== Last line of decrypted key ==="
+#           tail -n 1 ansible-ci-decrypted || echo "no file"
+
+#       - name: Read decrypted key into output
+#         id: read_key
+#         run: |
+#           echo "key<<EOF" >> $GITHUB_OUTPUT
+#           cat ansible-ci-decrypted >> $GITHUB_OUTPUT
+#           echo "EOF" >> $GITHUB_OUTPUT
+
+#       - name: Start ssh-agent and add key
+#         uses: webfactory/ssh-agent@v0.9.0
+#         with:
+#           ssh-private-key: ${{ steps.read_key.outputs.key }}
+#           log-public-key: true
+
+#       # - name: Configure known_hosts
+#       #   run: |
+#       #     mkdir -p ~/.ssh
+#       #     ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
+#       #     # add other VM / node IPs here if needed
+
+#       - name: Run Ansible deploy
+#         env:
+#           ANSIBLE_HOST_KEY_CHECKING: "False"
+#           ANSIBLE_VAULT_PASSWORD_FILE: "./vault_pass.txt"
+#         run: |
+#           chmod +x scripts/deploy.sh
+#           ./scripts/deploy.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.environment }}"
+
 name: Deploy Nautobot
 
 on:
@@ -7,12 +106,16 @@ on:
         description: "Deployment mode"
         required: true
         type: choice
-        options: [standalone, ha]
+        options:
+          - standalone
+          - ha
       environment:
         description: "Environment"
         required: true
         type: choice
-        options: [dev, prod]
+        options:
+          - dev
+          - prod
       standalone_ip:
         description: "Standalone VM IP (for mode=standalone)"
         required: false
@@ -46,6 +149,26 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Validate inputs
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+
+          if [ "$MODE" = "standalone" ]; then
+            if [ -z "${{ github.event.inputs.standalone_ip }}" ]; then
+              echo "Error: standalone_ip is required for mode=standalone"
+              exit 1
+            fi
+          else
+            if [ -z "${{ github.event.inputs.app_ip }}" ] ||
+               [ -z "${{ github.event.inputs.worker_ip }}" ] ||
+               [ -z "${{ github.event.inputs.scheduler_ip }}" ] ||
+               [ -z "${{ github.event.inputs.postgres_ip }}" ] ||
+               [ -z "${{ github.event.inputs.redis_ip }}" ]; then
+              echo "Error: all HA IPs (app/worker/scheduler/postgres/redis) are required for mode=ha"
+              exit 1
+            fi
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -73,9 +196,9 @@ jobs:
       - name: Read decrypted key into output
         id: read_key
         run: |
-          echo "key<<EOF" >> $GITHUB_OUTPUT
-          cat ansible-ci-decrypted >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "key<<EOF" >> "$GITHUB_OUTPUT"
+          cat ansible-ci-decrypted >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Start ssh-agent and add key
         uses: webfactory/ssh-agent@v0.9.0
@@ -83,11 +206,82 @@ jobs:
           ssh-private-key: ${{ steps.read_key.outputs.key }}
           log-public-key: true
 
+      # Optional: enable if you want strict host key checking
       # - name: Configure known_hosts
       #   run: |
       #     mkdir -p ~/.ssh
-      #     ssh-keyscan -H 172.17.228.201 >> ~/.ssh/known_hosts
-      #     # add other VM / node IPs here if needed
+      #     if [ "${{ github.event.inputs.mode }}" = "standalone" ]; then
+      #       ssh-keyscan -H "${{ github.event.inputs.standalone_ip }}" >> ~/.ssh/known_hosts
+      #     else
+      #       ssh-keyscan -H "${{ github.event.inputs.app_ip }}" >> ~/.ssh/known_hosts
+      #       ssh-keyscan -H "${{ github.event.inputs.worker_ip }}" >> ~/.ssh/known_hosts
+      #       ssh-keyscan -H "${{ github.event.inputs.scheduler_ip }}" >> ~/.ssh/known_hosts
+      #       ssh-keyscan -H "${{ github.event.inputs.postgres_ip }}" >> ~/.ssh/known_hosts
+      #       ssh-keyscan -H "${{ github.event.inputs.redis_ip }}" >> ~/.ssh/known_hosts
+      #     fi
+
+      - name: Generate dynamic inventory
+        run: |
+          mkdir -p inventory/vm
+          ENV_NAME="${{ github.event.inputs.environment }}"
+
+          if [ "${{ github.event.inputs.mode }}" = "standalone" ]; then
+            cat > "inventory/vm/${ENV_NAME}.yml" <<EOF
+all:
+  children:
+    ${ENV_NAME}_vm:
+      hosts:
+        dev-nautobot-01:
+          ansible_host: ${{ github.event.inputs.standalone_ip }}
+          ansible_user: admin1
+          deploy_env: ${ENV_NAME}
+          deployment_type: vm
+EOF
+          else
+            cat > "inventory/vm/${ENV_NAME}.yml" <<EOF
+all:
+  children:
+    ${ENV_NAME}_vm:
+      hosts:
+        nautobot-app:
+          ansible_host: ${{ github.event.inputs.app_ip }}
+          ansible_user: admin1
+          role: app
+          deploy_env: ${ENV_NAME}
+          deployment_type: ha
+
+        nautobot-worker:
+          ansible_host: ${{ github.event.inputs.worker_ip }}
+          ansible_user: admin1
+          role: worker
+          deploy_env: ${ENV_NAME}
+          deployment_type: ha
+
+        nautobot-scheduler:
+          ansible_host: ${{ github.event.inputs.scheduler_ip }}
+          ansible_user: admin1
+          role: scheduler
+          deploy_env: ${ENV_NAME}
+          deployment_type: ha
+
+        nautobot-postgres:
+          ansible_host: ${{ github.event.inputs.postgres_ip }}
+          ansible_user: admin1
+          role: postgres
+          deploy_env: ${ENV_NAME}
+          deployment_type: ha
+
+        nautobot-redis:
+          ansible_host: ${{ github.event.inputs.redis_ip }}
+          ansible_user: admin1
+          role: redis
+          deploy_env: ${ENV_NAME}
+          deployment_type: ha
+EOF
+          fi
+
+          echo "====== Generated inventory/vm/${ENV_NAME}.yml ======"
+          cat "inventory/vm/${ENV_NAME}.yml"
 
       - name: Run Ansible deploy
         env:
@@ -96,4 +290,3 @@ jobs:
         run: |
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.environment }}"
-
