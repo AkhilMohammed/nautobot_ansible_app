@@ -52,6 +52,7 @@ nautobot_celery_result_backend: "redis://{{ nautobot_redis.host }}:{{ nautobot_r
 nautobot_allowed_hosts_base:
   - "localhost"
   - "127.0.0.1"
+  - "172.17.228.202"
 
 # Dynamically add this host's IP / inventory name
 nautobot_allowed_hosts: >-
