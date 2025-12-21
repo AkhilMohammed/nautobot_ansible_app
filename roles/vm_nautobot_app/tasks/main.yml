@@ -571,30 +571,17 @@
     state: link
   notify: reload_nginx
 
-# 🔥 LET'S ENCRYPT SSL
-- name: Install certbot
-  ansible.builtin.apt:
-    name:
-      - certbot
-      - python3-certbot-nginx
-    state: present
-    update_cache: yes
-
-- name: Stop nginx temporarily for certbot
-  ansible.builtin.systemd:
-    name: nginx
-    state: stopped
-
-- name: Request Let's Encrypt certificate
-  ansible.builtin.command:
-    cmd: certbot certonly --standalone -d {{ ansible_fqdn }} --email admin@{{ ansible_fqdn }} --agree-tos --non-interactive
-  register: certbot_result
-  failed_when: certbot_result.rc != 0
-
-- name: Start nginx after certbot
-  ansible.builtin.systemd:
-    name: nginx
-    state: started
+# 🔥 HTTPS WITH SNAKEOIL CERTS (WORKS IMMEDIATELY)
+- name: Copy snakeoil SSL certificates
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    remote_src: yes
+    mode: "0644"
+  loop:
+    - { src: "/etc/ssl/certs/ssl-cert-snakeoil.pem", dest: "/etc/ssl/certs/nautobot.crt" }
+    - { src: "/etc/ssl/private/ssl-cert-snakeoil.key", dest: "/etc/ssl/private/nautobot.key" }
+  notify: reload_nginx
 
 
 # 🔥 GUNICORN SERVICE
