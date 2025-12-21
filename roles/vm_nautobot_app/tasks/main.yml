@@ -570,8 +570,20 @@
     dest: /etc/nginx/sites-enabled/nautobot
     state: link
   notify: reload_nginx
+  
+# 🔥 GENERATE + COPY SSL CERTS (ROBUST)
+- name: Install ssl-cert package (provides snakeoil certs)
+  ansible.builtin.apt:
+    name: ssl-cert
+    state: present
+    update_cache: yes
 
-# 🔥 HTTPS WITH SNAKEOIL CERTS (WORKS IMMEDIATELY)
+- name: Generate snakeoil SSL certificates if missing
+  ansible.builtin.command:
+    cmd: make -C /etc/ssl/private ssl-cert
+    creates: /etc/ssl/private/ssl-cert-snakeoil.key
+  become: yes
+
 - name: Copy snakeoil SSL certificates
   ansible.builtin.copy:
     src: "{{ item.src }}"
