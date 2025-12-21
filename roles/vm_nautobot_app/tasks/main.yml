@@ -553,6 +553,15 @@
   loop: "{{ nautobot_pip_packages | default([]) }}"
   tags: pip-packages
 
+
+# [Previous tasks unchanged until pip installs...]
+
+- name: Install gevent for gunicorn workers
+  ansible.builtin.pip:
+    name: gevent==24.1.0
+    virtualenv: "{{ nautobot_venv }}"
+  become_user: "{{ nautobot_user }}"
+
 - name: Install Git-based packages
   ansible.builtin.pip:
     name: "{{ item.name }}"
@@ -571,6 +580,14 @@
     mode: "0640"
   tags: config
 
+# 🔥 WAIT FOR DATABASE READY
+- name: Wait for PostgreSQL
+  ansible.builtin.wait_for:
+    host: "{{ postgres_host | default('localhost') }}"
+    port: "{{ postgres_port | default(5432) }}"
+    state: started
+    timeout: 30
+
 - name: Run database migrations
   ansible.builtin.command:
     cmd: "{{ nautobot_venv }}/bin/nautobot-server migrate"
@@ -580,6 +597,16 @@
   register: migrate_result
   changed_when: "'No migrations to apply' not in migrate_result.stdout"
   tags: migrate
+
+- name: Create superuser if not exists
+  ansible.builtin.command:
+    cmd: "{{ nautobot_venv }}/bin/nautobot-server createsuperuser --noinput --username admin --email admin@example.com"
+  environment:
+    NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
+  become_user: "{{ nautobot_user }}"
+  register: createsuperuser
+  failed_when: "'already exists' not in createsuperuser.stderr"
+  ignore_errors: yes
 
 - name: Collect static files
   ansible.builtin.command:
@@ -596,7 +623,46 @@
     recurse: yes
     mode: "0755"
 
-# 🔥 NGINX CONFIGURATION
+# 🔥 SIMPLIFIED GUNICORN SERVICE (NO gevent - bulletproof)
+- name: Deploy nautobot-gunicorn systemd service
+  ansible.builtin.copy:
+    dest: "{{ systemd_path }}/nautobot-gunicorn.service"
+    mode: 0644
+    content: |
+      [Unit]
+      Description=Nautobot Gunicorn (Production)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=notify
+      User={{ nautobot_user }}
+      Group={{ nautobot_group }}
+      WorkingDirectory={{ nautobot_root }}
+      Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
+      Environment="PYTHONPATH={{ nautobot_root }}"
+      
+      ExecStart={{ nautobot_venv }}/bin/gunicorn \
+        --name nautobot \
+        --workers 3 \
+        --worker-tmp-dir /dev/shm \
+        --bind=127.0.0.1:8001 \
+        --timeout=120 \
+        --max-requests=1000 \
+        --max-requests-jitter=100 \
+        --keep-alive=2 \
+        nautobot.core.wsgi:application
+      
+      ExecReload=/bin/kill -s HUP $MAINPID
+      Restart=on-failure
+      RestartSec=5s
+      TimeoutStopSec=300
+      PrivateTmp=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+# 🔥 NGINX CONFIG (unchanged)
 - name: Remove default nginx site
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
@@ -617,49 +683,33 @@
     state: link
   notify: reload_nginx
 
-# 🔥 GUNICORN SERVICE
-- name: Deploy nautobot-gunicorn systemd service
-  ansible.builtin.copy:
-    dest: "{{ systemd_path }}/nautobot-gunicorn.service"
-    mode: 0644
-    content: |
-      [Unit]
-      Description=Nautobot Gunicorn (NGINX Backend)
-      After=network.target postgresql.service redis.service
-      Wants=network.target
-
-      [Service]
-      Type=notify
-      User={{ nautobot_user }}
-      Group={{ nautobot_group }}
-      WorkingDirectory={{ nautobot_root }}
-      Environment=NAUTOBOT_CONFIG={{ nautobot_config_path }}
-      ExecStart={{ nautobot_venv }}/bin/gunicorn nautobot.core.wsgi:application \
-        --name nautobot \
-        --workers 3 \
-        --worker-class=gevent \
-        --bind=127.0.0.1:8001 \
-        --timeout=120 \
-        --max-requests=1000 \
-        --max-requests-jitter=100
-      Restart=on-failure
-      RestartSec=10s
-
-      [Install]
-      WantedBy=multi-user.target
-
-- name: Start all services
+# 🔥 START SERVICES WITH HEALTH CHECKS
+- name: Reload systemd
   ansible.builtin.systemd:
-    name: "{{ item }}"
-    state: restarted
-    enabled: yes
     daemon_reload: yes
-  loop:
-    - nautobot-gunicorn
-    - nginx
 
-# 🔥 HANDLERS (add to roles/vm_nautobot_app/handlers/main.yml)
-- name: reload_nginx
+- name: Start nautobot-gunicorn
+  ansible.builtin.systemd:
+    name: nautobot-gunicorn
+    state: started
+    enabled: yes
+
+- name: Wait for gunicorn to be ready
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8001
+    delay: 5
+    timeout: 30
+
+- name: Start nginx
   ansible.builtin.systemd:
     name: nginx
-    state: reloaded
+    state: started
+    enabled: yes
+
+- name: Wait for nginx to be ready
+  ansible.builtin.wait_for:
+    host: 0.0.0.0
+    port: 80
+    delay: 5
+    timeout: 30
