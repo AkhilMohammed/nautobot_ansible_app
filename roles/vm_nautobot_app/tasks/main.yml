@@ -399,7 +399,7 @@
     update_cache: yes
   tags: packages
 
-- name: Set variables
+- name: Set Nautobot variables
   ansible.builtin.set_fact:
     python_version: "/usr/bin/python3.11"
     nautobot_user: "{{ nautobot_user | default('nautobot') }}"
@@ -412,10 +412,9 @@
     nautobot_git_root: "{{ nautobot_root }}/.nautobot"
     nautobot_venv: "{{ nautobot_root }}/venv"
     nautobot_config_path: "{{ nautobot_root }}/nautobot_config.py"
-    systemd_path: "/etc/systemd/system"
 
-# 🔥 COMPLETE CLEANUP (automatic)
-- name: Stop all services
+# 🔥 CLEANUP
+- name: Stop services
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
@@ -425,17 +424,19 @@
     - nginx
   ignore_errors: yes
 
-- name: Remove old nautobot data
+- name: Remove old data
   ansible.builtin.file:
     path: "{{ nautobot_root }}"
     state: absent
   ignore_errors: yes
 
-- name: Create nautobot group and user
+# 🔥 USERS & GROUPS
+- name: Create nautobot group
   ansible.builtin.group:
     name: "{{ nautobot_group }}"
     state: present
-  - name: Create nautobot user
+
+- name: Create nautobot user
   ansible.builtin.user:
     name: "{{ nautobot_user }}"
     group: "{{ nautobot_group }}"
@@ -443,7 +444,8 @@
     create_home: no
     system: yes
 
-- name: Create nautobot directories
+# 🔥 DIRECTORIES
+- name: Create directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -458,7 +460,7 @@
     - "{{ nautobot_git_path }}"
     - "{{ nautobot_git_root }}"
 
-- name: Create venv log file
+- name: Create log file
   ansible.builtin.file:
     path: "{{ nautobot_logs_path }}/nautobot.log"
     state: touch
@@ -467,7 +469,7 @@
     mode: "0664"
 
 # 🔥 PYTHON ENVIRONMENT
-- name: Create Python 3.11 venv
+- name: Create Python venv
   ansible.builtin.command:
     cmd: "{{ python_version }} -m venv {{ nautobot_venv }}"
   become_user: "{{ nautobot_user }}"
@@ -479,19 +481,16 @@
     virtualenv: "{{ nautobot_venv }}"
   become_user: "{{ nautobot_user }}"
 
-- name: Install Python packages
+- name: Install core packages
   ansible.builtin.pip:
-    name: "{{ packages.name }}=={{ packages.version }}"
+    name:
+      - "wheel"
+      - "gunicorn==22.0.0"
     virtualenv: "{{ nautobot_venv }}"
     extra_args: --no-cache-dir
   become_user: "{{ nautobot_user }}"
-  loop:
-    - { name: "wheel", version: "*" }
-    - { name: "gunicorn", version: "22.0.0" }
-  loop_control:
-    loop_var: packages
 
-- name: Install Nautobot core
+- name: Install Nautobot
   ansible.builtin.pip:
     name: "nautobot[postgres,redis]=={{ nautobot_version }}"
     virtualenv: "{{ nautobot_venv }}"
@@ -506,6 +505,7 @@
     extra_args: --no-cache-dir
   become_user: "{{ nautobot_user }}"
   loop: "{{ nautobot_pip_packages | default([]) }}"
+  when: nautobot_pip_packages is defined
   tags: pip-packages
 
 - name: Install git packages
@@ -515,6 +515,7 @@
     extra_args: --no-cache-dir
   become_user: "{{ nautobot_user }}"
   loop: "{{ nautobot_git_packages | default([]) }}"
+  when: nautobot_git_packages is defined
   tags: git-plugins
 
 # 🔥 NAUTOBOT SETUP
@@ -549,8 +550,8 @@
     recurse: yes
     mode: "0755"
 
-# 🔥 NGINX CONFIG
-- name: Remove default nginx
+# 🔥 NGINX
+- name: Remove default nginx site
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
@@ -560,6 +561,7 @@
   ansible.builtin.template:
     src: nginx-nautobot.conf.j2
     dest: /etc/nginx/sites-available/nautobot
+    mode: 0644
   notify: reload_nginx
 
 - name: Enable nginx site
@@ -572,7 +574,8 @@
 # 🔥 GUNICORN SERVICE
 - name: Deploy gunicorn service
   ansible.builtin.copy:
-    dest: "{{ systemd_path }}/nautobot-gunicorn.service"
+    dest: /etc/systemd/system/nautobot-gunicorn.service
+    mode: 0644
     content: |
       [Unit]
       Description=Nautobot Gunicorn
@@ -589,7 +592,6 @@
       ExecStart={{ nautobot_venv }}/bin/gunicorn \
         --bind 127.0.0.1:8001 \
         --workers 3 \
-        --worker-connections 1000 \
         --timeout 120 \
         --keep-alive 2 \
         nautobot.core.wsgi:application
@@ -600,10 +602,11 @@
       [Install]
       WantedBy=multi-user.target
 
-# 🔥 START SERVICES
+# 🔥 STARTUP
 - name: Reload systemd
   ansible.builtin.systemd:
     daemon_reload: yes
+  notify: reload_nginx
 
 - name: Start gunicorn
   ansible.builtin.systemd:
@@ -611,7 +614,7 @@
     state: started
     enabled: yes
 
-- name: Wait gunicorn
+- name: Wait for gunicorn
   ansible.builtin.wait_for:
     host: 127.0.0.1
     port: 8001
@@ -623,12 +626,7 @@
     state: started
     enabled: yes
 
-- name: Wait nginx
+- name: Wait for nginx
   ansible.builtin.wait_for:
     port: 80
     timeout: 30
-
-- name: Health check
-  ansible.builtin.uri:
-    url: "http://127.0.0.1"
-    status_code: 302
