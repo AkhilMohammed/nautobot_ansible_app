@@ -12,9 +12,10 @@ from nautobot.core.settings_funcs import is_truthy, parse_redis_connection
 # Core Settings
 # ===========================
 
-# ALLOWED_HOSTS = {{ nautobot_allowed_hosts | to_nice_json }}
+ALLOWED_HOSTS = {{ nautobot_allowed_hosts | to_nice_json }}
 DEBUG = {{ nautobot_debug | default(false) | ternary('True', 'False') }}
 SECRET_KEY = "{{ nautobot_secret_key }}"
+
 # Add to your existing config file:
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
