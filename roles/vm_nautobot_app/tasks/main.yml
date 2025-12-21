@@ -19,6 +19,10 @@
     update_cache: yes
   tags: packages
 
+- name: Set default Python version for Nautobot venv
+  ansible.builtin.set_fact:
+    python_version: "{{ python_version | default('python3') }}"
+
 - name: Ensure Nautobot defaults
   ansible.builtin.set_fact:
     nautobot_user: "{{ nautobot_user | default('nautobot') }}"
@@ -76,6 +80,7 @@
   ansible.builtin.command:
     cmd: "{{ python_version }} -m venv {{ nautobot_venv }}"
     creates: "{{ nautobot_venv }}/bin/python"
+  become: true
 
 - name: Upgrade pip in virtualenv
   ansible.builtin.pip:
