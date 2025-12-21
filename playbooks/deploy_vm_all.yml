@@ -51,7 +51,7 @@
 
     - name: Check Nautobot HTTP API
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:8000/"
+        url: "https://{{ ansible_host }}:8000/"
         method: GET
         status_code: 200
       register: api_check
