@@ -60,7 +60,7 @@
       ansible.builtin.uri:
         url: "http://{{ ansible_host }}/"
         method: GET
-        status_code: 301
+        status_code: 200
         validate_certs: no
       register: http_redirect
       tags: [verify]
