@@ -109,6 +109,12 @@ LOGGING = {
     },
 }
 
+# Add to existing config:
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+ALLOWED_HOSTS = ['{{ ansible_fqdn }}', '172.17.228.202']
+
+
 # ===========================
 # Storage Configuration
 # ===========================

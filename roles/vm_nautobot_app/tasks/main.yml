@@ -571,6 +571,32 @@
     state: link
   notify: reload_nginx
 
+# 🔥 LET'S ENCRYPT SSL
+- name: Install certbot
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: yes
+
+- name: Stop nginx temporarily for certbot
+  ansible.builtin.systemd:
+    name: nginx
+    state: stopped
+
+- name: Request Let's Encrypt certificate
+  ansible.builtin.command:
+    cmd: certbot certonly --standalone -d {{ ansible_fqdn }} --email admin@{{ ansible_fqdn }} --agree-tos --non-interactive
+  register: certbot_result
+  failed_when: certbot_result.rc != 0
+
+- name: Start nginx after certbot
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+
+
 # 🔥 GUNICORN SERVICE
 - name: Deploy gunicorn service
   ansible.builtin.copy:
