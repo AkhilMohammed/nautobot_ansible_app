@@ -1,11 +1,201 @@
+# # ---
+# # - name: Ensure system packages are installed
+# #   ansible.builtin.apt:
+# #     name:
+# #       - python3
+# #       - python3-pip
+# #       - python3-venv
+# #       - python3-dev
+# #       - build-essential
+# #       - libpq-dev
+# #       - libxml2-dev
+# #       - libxslt1-dev
+# #       - libffi-dev
+# #       - libssl-dev
+# #       - git
+# #       - redis-tools
+# #       - postgresql-client
+# #     state: present
+# #     update_cache: yes
+# #   tags: packages
+
+# # - name: Set default Python version for Nautobot venv
+# #   ansible.builtin.set_fact:
+# #     python_version: "{{ python_version | default('python3') }}"
+
+# # - name: Ensure Nautobot defaults
+# #   ansible.builtin.set_fact:
+# #     nautobot_user: "{{ nautobot_user | default('nautobot') }}"
+# #     nautobot_group: "{{ nautobot_group | default('nautobot') }}"
+# #     nautobot_root: "{{ nautobot_root | default('/opt/nautobot') }}"
+# #     nautobot_logs_path: "{{ nautobot_logs_path | default(nautobot_root + '/logs') }}"
+# #     nautobot_media_path: "{{ nautobot_media_path | default(nautobot_root + '/media') }}"
+# #     nautobot_static_path: "{{ nautobot_static_path | default(nautobot_root + '/static') }}"
+# #     nautobot_git_path: "{{ nautobot_git_path | default(nautobot_root + '/git') }}"
+# #     nautobot_git_root: "{{ nautobot_git_root | default(nautobot_root + '/.nautobot') }}"
+# #     nautobot_venv: "{{ nautobot_venv | default(nautobot_root + '/venv') }}"
+
+# # - name: Ensure Nautobot root directory exists (no ownership yet)
+# #   ansible.builtin.file:
+# #     path: "{{ nautobot_root }}"
+# #     state: directory
+# #     mode: "0755"
+
+# # - name: Create nautobot group
+# #   ansible.builtin.group:
+# #     name: "{{ nautobot_group }}"
+# #     state: present
+
+# # - name: Create nautobot user
+# #   ansible.builtin.user:
+# #     name: "{{ nautobot_user }}"
+# #     group: "{{ nautobot_group }}"
+# #     shell: /bin/bash
+# #     create_home: yes
+# #     home: "{{ nautobot_root }}"
+
+# # - name: Create Nautobot subdirectories with nautobot ownership
+# #   ansible.builtin.file:
+# #     path: "{{ item }}"
+# #     state: directory
+# #     owner: "{{ nautobot_user }}"
+# #     group: "{{ nautobot_group }}"
+# #     mode: "0755"
+# #   loop:
+# #     - "{{ nautobot_logs_path }}"
+# #     - "{{ nautobot_media_path }}"
+# #     - "{{ nautobot_static_path }}"
+# #     - "{{ nautobot_git_path }}"
+# #     - "{{ nautobot_git_root }}"
+
+# # - name: Ensure Nautobot log file exists and writable
+# #   ansible.builtin.file:
+# #     path: "{{ nautobot_logs_path }}/nautobot.log"
+# #     state: touch
+# #     owner: "{{ nautobot_user }}"
+# #     group: "{{ nautobot_group }}"
+# #     mode: "0644"
+
+# # - name: Create Python virtual environment
+# #   ansible.builtin.command:
+# #     cmd: "{{ python_version }} -m venv {{ nautobot_venv }}"
+# #     creates: "{{ nautobot_venv }}/bin/python"
+# #   become: true
+
+# # - name: Upgrade pip in virtualenv
+# #   ansible.builtin.pip:
+# #     name: pip
+# #     state: latest
+# #     virtualenv: "{{ nautobot_venv }}"
+
+# # - name: Install wheel in virtualenv
+# #   ansible.builtin.pip:
+# #     name: wheel
+# #     state: present
+# #     virtualenv: "{{ nautobot_venv }}"
+
+# # - name: Install Nautobot core
+# #   ansible.builtin.pip:
+# #     name: "nautobot[postgres,redis]=={{ nautobot_version }}"
+# #     virtualenv: "{{ nautobot_venv }}"
+# #     extra_args: "{{ pip_extra_args | default('') }}"
+# #   tags: nautobot-core
+
+# # - name: Install gunicorn in virtualenv
+# #   ansible.builtin.pip:
+# #     name: gunicorn
+# #     state: present
+# #     virtualenv: "{{ nautobot_venv }}"
+
+# # - name: Install pip packages (dependencies)
+# #   ansible.builtin.pip:
+# #     name: "{{ item.name }}=={{ item.version }}"
+# #     virtualenv: "{{ nautobot_venv }}"
+# #     extra_args: "{{ pip_extra_args | default('') }}"
+# #   loop: "{{ nautobot_pip_packages | default([]) }}"
+# #   tags: pip-packages
+
+# # - name: Install Git-based packages (plugins)
+# #   ansible.builtin.pip:
+# #     name: "{{ item.name }}"
+# #     virtualenv: "{{ nautobot_venv }}"
+# #     extra_args: "{{ pip_extra_args | default('') }}"
+# #   loop: "{{ nautobot_git_packages | default([]) }}"
+# #   notify:
+# #     - Restart nautobot-app
+# #     - Restart nautobot-worker
+# #     - Restart nautobot-scheduler
+# #   tags: git-plugins
+
+# # - name: Deploy nautobot_config.py
+# #   ansible.builtin.template:
+# #     src: nautobot_config.py.j2
+# #     dest: "{{ nautobot_config_path }}"
+# #     owner: "{{ nautobot_user }}"
+# #     group: "{{ nautobot_group }}"
+# #     mode: "0640"
+# #   notify:
+# #     - Restart nautobot-app
+# #     - Restart nautobot-worker
+# #     - Restart nautobot-scheduler
+# #   tags: config
+
+# # - name: Run database migrations
+# #   ansible.builtin.command:
+# #     cmd: "{{ nautobot_venv }}/bin/nautobot-server migrate"
+# #   environment:
+# #     NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
+# #   register: migrate_result
+# #   changed_when: "'No migrations to apply' not in migrate_result.stdout"
+# #   tags: migrate
+
+# # - name: Collect static files
+# #   ansible.builtin.command:
+# #     cmd: "{{ nautobot_venv }}/bin/nautobot-server collectstatic --no-input"
+# #   environment:
+# #     NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
+# #   tags: static
+
+# # - name: Deploy nautobot-app systemd service
+# #   ansible.builtin.copy:
+# #     dest: "{{ systemd_path }}/nautobot-app.service"
+# #     mode: "0644"
+# #     content: |
+# #       [Unit]
+# #       Description=Nautobot WSGI Application
+# #       After=network-online.target
+# #       Wants=network-online.target
+
+# #       [Service]
+# #       Type=simple
+# #       User={{ nautobot_user }}
+# #       Group={{ nautobot_group }}
+# #       WorkingDirectory={{ nautobot_root }}
+# #       Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
+# #       ExecStart={{ nautobot_venv }}/bin/gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 300 nautobot.core.wsgi:application
+# #       Restart=on-failure
+# #       RestartSec=30s
+
+# #       [Install]
+# #       WantedBy=multi-user.target
+# #   notify: Reload systemd
+
+# # - name: Enable and start nautobot-app service
+# #   ansible.builtin.systemd:
+# #     name: nautobot-app
+# #     enabled: yes
+# #     state: started
+# #     daemon_reload: yes
+
+
 # ---
 # - name: Ensure system packages are installed
 #   ansible.builtin.apt:
 #     name:
-#       - python3
-#       - python3-pip
-#       - python3-venv
-#       - python3-dev
+#       - python3.11
+#       - python3.11-venv
+#       - python3.11-dev
+#       - python3.11-distutils
 #       - build-essential
 #       - libpq-dev
 #       - libxml2-dev
@@ -19,9 +209,9 @@
 #     update_cache: yes
 #   tags: packages
 
-# - name: Set default Python version for Nautobot venv
+# - name: Set Python version for Nautobot
 #   ansible.builtin.set_fact:
-#     python_version: "{{ python_version | default('python3') }}"
+#     python_version: python3.11
 
 # - name: Ensure Nautobot defaults
 #   ansible.builtin.set_fact:
@@ -76,7 +266,7 @@
 #     group: "{{ nautobot_group }}"
 #     mode: "0644"
 
-# - name: Create Python virtual environment
+# - name: Create Python 3.11 virtual environment
 #   ansible.builtin.command:
 #     cmd: "{{ python_version }} -m venv {{ nautobot_venv }}"
 #     creates: "{{ nautobot_venv }}/bin/python"
@@ -196,6 +386,7 @@
       - python3.11-venv
       - python3.11-dev
       - python3.11-distutils
+      - nginx
       - build-essential
       - libpq-dev
       - libxml2-dev
@@ -211,7 +402,7 @@
 
 - name: Set Python version for Nautobot
   ansible.builtin.set_fact:
-    python_version: python3.11
+    python_version: "/usr/bin/python3.11"
 
 - name: Ensure Nautobot defaults
   ansible.builtin.set_fact:
@@ -224,8 +415,10 @@
     nautobot_git_path: "{{ nautobot_git_path | default(nautobot_root + '/git') }}"
     nautobot_git_root: "{{ nautobot_git_root | default(nautobot_root + '/.nautobot') }}"
     nautobot_venv: "{{ nautobot_venv | default(nautobot_root + '/venv') }}"
+    nautobot_config_path: "{{ nautobot_config_path | default(nautobot_root + '/nautobot_config.py') }}"
+    systemd_path: "{{ systemd_path | default('/etc/systemd/system') }}"
 
-- name: Ensure Nautobot root directory exists (no ownership yet)
+- name: Ensure Nautobot root directory exists
   ansible.builtin.file:
     path: "{{ nautobot_root }}"
     state: directory
@@ -244,7 +437,7 @@
     create_home: yes
     home: "{{ nautobot_root }}"
 
-- name: Create Nautobot subdirectories with nautobot ownership
+- name: Create Nautobot subdirectories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -258,7 +451,7 @@
     - "{{ nautobot_git_path }}"
     - "{{ nautobot_git_root }}"
 
-- name: Ensure Nautobot log file exists and writable
+- name: Ensure Nautobot log file exists
   ansible.builtin.file:
     path: "{{ nautobot_logs_path }}/nautobot.log"
     state: touch
@@ -266,19 +459,25 @@
     group: "{{ nautobot_group }}"
     mode: "0644"
 
+# 🗑️ FORCE DELETE existing broken venv
+- name: Remove existing virtual environment
+  ansible.builtin.file:
+    path: "{{ nautobot_venv }}"
+    state: absent
+
 - name: Create Python 3.11 virtual environment
   ansible.builtin.command:
     cmd: "{{ python_version }} -m venv {{ nautobot_venv }}"
-    creates: "{{ nautobot_venv }}/bin/python"
-  become: true
+  become_user: "{{ nautobot_user }}"
 
 - name: Upgrade pip in virtualenv
   ansible.builtin.pip:
-    name: pip
-    state: latest
+    name: pip==24.0
+    state: present
     virtualenv: "{{ nautobot_venv }}"
+    extra_args: --upgrade
 
-- name: Install wheel in virtualenv
+- name: Install wheel
   ansible.builtin.pip:
     name: wheel
     state: present
@@ -288,20 +487,19 @@
   ansible.builtin.pip:
     name: "nautobot[postgres,redis]=={{ nautobot_version }}"
     virtualenv: "{{ nautobot_venv }}"
-    extra_args: "{{ pip_extra_args | default('') }}"
+    extra_args: "--no-cache-dir"
   tags: nautobot-core
 
-- name: Install gunicorn in virtualenv
+- name: Install gunicorn
   ansible.builtin.pip:
-    name: gunicorn
-    state: present
+    name: gunicorn==22.0.0
     virtualenv: "{{ nautobot_venv }}"
 
 - name: Install pip packages (dependencies)
   ansible.builtin.pip:
     name: "{{ item.name }}=={{ item.version }}"
     virtualenv: "{{ nautobot_venv }}"
-    extra_args: "{{ pip_extra_args | default('') }}"
+    extra_args: "--no-cache-dir"
   loop: "{{ nautobot_pip_packages | default([]) }}"
   tags: pip-packages
 
@@ -309,12 +507,8 @@
   ansible.builtin.pip:
     name: "{{ item.name }}"
     virtualenv: "{{ nautobot_venv }}"
-    extra_args: "{{ pip_extra_args | default('') }}"
+    extra_args: "--no-cache-dir"
   loop: "{{ nautobot_git_packages | default([]) }}"
-  notify:
-    - Restart nautobot-app
-    - Restart nautobot-worker
-    - Restart nautobot-scheduler
   tags: git-plugins
 
 - name: Deploy nautobot_config.py
@@ -324,10 +518,6 @@
     owner: "{{ nautobot_user }}"
     group: "{{ nautobot_group }}"
     mode: "0640"
-  notify:
-    - Restart nautobot-app
-    - Restart nautobot-worker
-    - Restart nautobot-scheduler
   tags: config
 
 - name: Run database migrations
@@ -335,6 +525,7 @@
     cmd: "{{ nautobot_venv }}/bin/nautobot-server migrate"
   environment:
     NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
+  become_user: "{{ nautobot_user }}"
   register: migrate_result
   changed_when: "'No migrations to apply' not in migrate_result.stdout"
   tags: migrate
@@ -344,35 +535,86 @@
     cmd: "{{ nautobot_venv }}/bin/nautobot-server collectstatic --no-input"
   environment:
     NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
-  tags: static
+  become_user: "{{ nautobot_user }}"
 
-- name: Deploy nautobot-app systemd service
+- name: Fix static files ownership
+  ansible.builtin.file:
+    path: "{{ nautobot_static_path }}"
+    owner: "{{ nautobot_user }}"
+    group: "{{ nautobot_group }}"
+    recurse: yes
+    mode: "0755"
+
+# 🔥 NGINX REVERSE PROXY CONFIGURATION
+- name: Remove default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Deploy Nautobot nginx configuration
+  ansible.builtin.template:
+    src: nginx-nautobot.conf.j2
+    dest: /etc/nginx/sites-available/nautobot
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable Nautobot nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/nautobot
+    dest: /etc/nginx/sites-enabled/nautobot
+    state: link
+  notify: Reload nginx
+
+- name: Deploy Gunicorn systemd service (INTERNAL ONLY)
   ansible.builtin.copy:
-    dest: "{{ systemd_path }}/nautobot-app.service"
+    dest: "{{ systemd_path }}/nautobot-gunicorn.service"
     mode: "0644"
     content: |
       [Unit]
-      Description=Nautobot WSGI Application
-      After=network-online.target
+      Description=Nautobot Gunicorn Application (Internal)
+      After=network-online.target postgresql.service redis.service
       Wants=network-online.target
 
       [Service]
-      Type=simple
+      Type=notify
       User={{ nautobot_user }}
       Group={{ nautobot_group }}
       WorkingDirectory={{ nautobot_root }}
       Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
-      ExecStart={{ nautobot_venv }}/bin/gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 300 nautobot.core.wsgi:application
+      ExecStart={{ nautobot_venv }}/bin/gunicorn nautobot.core.wsgi:application \
+        --name nautobot \
+        --workers 3 \
+        --worker-class=gevent \
+        --worker-connections=1000 \
+        --max-requests=1000 \
+        --max-requests-jitter=100 \
+        --bind=127.0.0.1:8001 \
+        --keep-alive=5 \
+        --timeout=120 \
+        --preload \
+        --access-logfile=-
+      ExecReload=/bin/kill -s HUP $MAINPID
       Restart=on-failure
       RestartSec=30s
+      TimeoutStopSec=300
 
       [Install]
       WantedBy=multi-user.target
   notify: Reload systemd
 
-- name: Enable and start nautobot-app service
+- name: Enable and start services
   ansible.builtin.systemd:
-    name: nautobot-app
+    name: "{{ item }}"
+    enabled: yes
+    state: restarted
+    daemon_reload: yes
+  loop:
+    - nautobot-gunicorn
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd:
+    name: nginx
     enabled: yes
     state: started
-    daemon_reload: yes
