@@ -20,3 +20,9 @@
     name: nautobot-scheduler
     state: restarted
     enabled: yes
+
+- name: reload_nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+
