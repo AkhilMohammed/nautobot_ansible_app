@@ -60,7 +60,7 @@
       ansible.builtin.uri:
         url: "http://{{ ansible_host }}/"
         method: GET
-        status_code: 200
+        status_code: 301
         validate_certs: no
       register: http_redirect
       tags: [verify]
@@ -69,9 +69,9 @@
       ansible.builtin.uri:
         url: "https://{{ ansible_host }}/"
         method: GET
-        status_code: [200, 302]  # Accept login redirect
-        validate_certs: no       # Ignore snakeoil cert
-        follow_redirects: no
+        status_code: [200, 302]
+        validate_certs: no
+        follow_redirects: false  # ← FIXED deprecation
       register: api_check
       retries: 10
       delay: 6
@@ -80,9 +80,10 @@
 
     - name: Show deployment result
       ansible.builtin.debug:
-        msg: 
+        msg:
           - "✅ Nautobot deployment successful on {{ inventory_hostname }}"
-          - "✅ HTTP redirect: {{ http_redirect.status }} ({{ http_redirect.msg.status }})"
-          - "✅ HTTPS status: {{ api_check.status }} ({{ api_check.msg.status }})"
+          - "✅ HTTP redirect status: {{ http_redirect.status }}"
+          - "✅ HTTPS status: {{ api_check.status }}"
           - "🌐 Access: https://{{ ansible_host }}/ (accept cert warning)"
+          - "🔐 Superuser: Run './venv/bin/nautobot-server createsuperuser'"
       when: api_check.status in [200, 302]
