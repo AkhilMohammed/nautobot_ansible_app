@@ -132,6 +132,7 @@ nautobot_celery_worker_autoscale: "4,2"
 
 # Service names
 nautobot_services:
-  - nautobot-app
+  - nautobot-gunicorn
+  - nginx 
   - nautobot-worker
   - nautobot-scheduler
