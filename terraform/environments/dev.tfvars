@@ -32,10 +32,6 @@ worker_vm_size     = "Standard_B2s"
 scheduler_vm_count = 1
 scheduler_vm_size  = "Standard_B1s"
 
-# Load Balancer
-lb_sku                    = "Basic"
-lb_frontend_ip_allocation = "Dynamic"
-
 # Storage
 storage_replication_type = "LRS"
 
