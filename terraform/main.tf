@@ -174,7 +174,7 @@ module "nautobot_scheduler" {
 
 # Load Balancer for Nautobot Web
 module "load_balancer" {
-  source = "./modules/load_balancer"
+  source = "./modules/loadbalancer"
 
   environment         = var.environment
   location            = var.location
