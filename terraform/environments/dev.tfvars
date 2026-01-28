@@ -1,6 +1,6 @@
 # Development Environment Configuration
 environment = "dev"
-location    = "westus2"  # westus2 supports PostgreSQL and has better VM availability
+location    = "centralus"  # trying centralus for PostgreSQL support on free tier
 
 # Network Configuration
 vnet_address_space = ["10.10.0.0/16"]
