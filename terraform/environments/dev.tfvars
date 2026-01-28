@@ -1,9 +1,12 @@
 # Development Environment Configuration
 environment = "dev"
-location    = "eastus"
+location    = "westus"  # Changed from eastus due to PostgreSQL restrictions
 
 # Network Configuration
 vnet_address_space = ["10.10.0.0/16"]
+subnet_frontend    = "10.10.0.0/24"  # Fixed subnet range
+subnet_app         = "10.10.1.0/24"  # Fixed subnet range
+subnet_data        = "10.10.2.0/24"  # Fixed subnet range
 app_subnet_cidr    = "10.10.1.0/24"
 
 # PostgreSQL Configuration (Azure Managed - Development Tier)
@@ -17,6 +20,9 @@ high_availability_enabled     = false
 redis_sku      = "Basic"    # Basic tier for dev
 redis_family   = "C"
 redis_capacity = 0          # 250 MB
+
+# Load Balancer Configuration
+lb_sku = "Standard"  # Changed from Basic to support availability zones
 
 # VM Configuration
 web_vm_count       = 1
