@@ -67,6 +67,7 @@ resource "azurerm_lb_rule" "https" {
   enable_floating_ip             = false
   idle_timeout_in_minutes        = 4
   load_distribution              = "SourceIPProtocol"
+  disable_outbound_snat          = true
 }
 
 # Load Balancing Rule - HTTP (will redirect to HTTPS by nginx)
@@ -82,6 +83,7 @@ resource "azurerm_lb_rule" "http" {
   enable_floating_ip             = false
   idle_timeout_in_minutes        = 4
   load_distribution              = "SourceIPProtocol"
+  disable_outbound_snat          = true
 }
 
 # Outbound Rule for SNAT

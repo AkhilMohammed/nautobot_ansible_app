@@ -26,11 +26,11 @@ lb_sku = "Standard"  # Changed from Basic to support availability zones
 
 # VM Configuration
 web_vm_count       = 1
-web_vm_size        = "Standard_B2s"
+web_vm_size        = "Standard_D2s_v3"
 worker_vm_count    = 1
-worker_vm_size     = "Standard_B2s"
+worker_vm_size     = "Standard_D2s_v3"
 scheduler_vm_count = 1
-scheduler_vm_size  = "Standard_B1s"
+scheduler_vm_size  = "Standard_B2ms"
 
 # Storage
 storage_replication_type = "LRS"
