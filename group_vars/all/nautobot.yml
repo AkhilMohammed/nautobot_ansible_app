@@ -1,5 +1,6 @@
 ---
-# Global Nautobot Configuration - applies to all environments
+# All Environments - Common Nautobot Configuration
+# Database and Redis now use Azure Managed Services
 
 # System Configuration
 nautobot_user: "nautobot"
@@ -16,17 +17,15 @@ nautobot_git_path: "{{ nautobot_root }}/git"
 python_version: "python3.11"
 pip_extra_args: "--no-cache-dir"
 
+# Systemd Configuration
 systemd_path: "/etc/systemd/system"
-
 
 # Git Authentication (will be overridden by vault in each env)
 git_username: "{{ vault_git_username }}"
 git_token: "{{ vault_git_token }}"
 git_auth_url: "{{ git_username }}:{{ git_token }}@"
 
-# Base URL for Git repos (Azure DevOps or GitHub)
-# For Azure DevOps: dev.azure.com/yourorg
-# For GitHub: github.com/yourorg
+# Base URL for Git repos
 git_base_url: "dev.azure.com/yourcompany"
 
 # Nautobot Core Version
@@ -35,5 +34,48 @@ nautobot_version: "2.4.7"
 # Common plugin list structure (overridden per environment)
 nautobot_pip_packages: []
 
-# Common settings
-systemd_path: "/etc/systemd/system"
+# Azure Managed Services Configuration
+# These will be populated from Terraform outputs
+# Database: Azure Database for PostgreSQL Flexible Server
+database_host: "{{ terraform_postgresql_fqdn | default('localhost') }}"
+database_port: 5432
+database_name: "{{ terraform_postgresql_database | default('nautobot') }}"
+database_user: "{{ terraform_postgresql_username | default('nautobot') }}"
+database_password: "{{ vault_database_password }}"
+database_conn_max_age: 300
+database_ssl_mode: "require"  # Azure PostgreSQL requires SSL
+
+# Redis: Azure Cache for Redis
+redis_host: "{{ terraform_redis_hostname | default('localhost') }}"
+redis_port: "{{ terraform_redis_ssl_port | default('6380') }}"
+redis_password: "{{ vault_redis_password }}"
+redis_ssl: true  # Azure Redis requires SSL
+redis_database: 0
+redis_cache_database: 1
+
+# Azure Storage Account (for static/media files)
+azure_storage_account_name: "{{ terraform_storage_account_name | default('') }}"
+azure_storage_account_key: "{{ vault_azure_storage_key | default('') }}"
+use_azure_storage: "{{ terraform_storage_account_name is defined and terraform_storage_account_name != '' }}"
+
+# Nautobot Configuration
+nautobot_allowed_hosts:
+  - "{{ terraform_load_balancer_fqdn | default('*') }}"
+  - "{{ terraform_load_balancer_ip | default('*') }}"
+  - "{{ inventory_hostname }}"
+  - "localhost"
+
+# Gunicorn Configuration
+gunicorn_workers: "{{ ansible_processor_vcpus | default(2) * 2 + 1 }}"
+gunicorn_threads: 3
+gunicorn_timeout: 120
+gunicorn_bind: "127.0.0.1:8000"
+
+# Celery Worker Configuration
+celery_worker_concurrency: "{{ ansible_processor_vcpus | default(2) }}"
+celery_worker_max_tasks_per_child: 1000
+
+# NGINX Configuration
+nginx_client_max_body_size: "25M"
+nginx_proxy_read_timeout: 300
+nginx_proxy_connect_timeout: 300

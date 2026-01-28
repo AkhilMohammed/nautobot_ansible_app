@@ -1,0 +1,22 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - python3
+  - python3-pip
+  - python3-venv
+  - git
+  - nginx
+  - ufw
+
+runcmd:
+  - echo "Cloud-init setup for Nautobot Web VM"
+  - mkdir -p /opt/nautobot
+  - chown ${admin_username}:${admin_username} /opt/nautobot
+  
+# Prepare for Ansible
+write_files:
+  - path: /etc/cloud-init-complete
+    content: |
+      Web VM initialized and ready for Ansible deployment

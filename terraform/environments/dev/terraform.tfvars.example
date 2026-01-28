@@ -1,0 +1,25 @@
+# Terraform Variables - DEV Environment
+# Copy this file to terraform.tfvars and customize
+
+project_name = "nautobot"
+location     = "eastus"
+
+# Admin Configuration
+admin_username = "azureuser"
+# Generate SSH key: ssh-keygen -t rsa -b 4096 -f ~/.ssh/nautobot-azure
+admin_ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC... your-key-here"
+
+# Network Configuration
+vnet_address_space = "10.0.0.0/16"
+subnet_frontend    = "10.0.1.0/24"
+subnet_app         = "10.0.2.0/24"
+subnet_data        = "10.0.3.0/24"
+
+# Static IPs for Data Tier
+postgres_private_ip = "10.0.3.10"
+redis_private_ip    = "10.0.3.11"
+
+# SSH Access - Restrict to your IP for security
+ssh_source_addresses = [
+  "0.0.0.0/0"  # CHANGE THIS to your IP range, e.g., "1.2.3.4/32"
+]

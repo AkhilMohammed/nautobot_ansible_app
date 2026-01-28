@@ -1,0 +1,238 @@
+name: Deploy Nautobot Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'terraform/**'
+      - 'playbooks/**'
+      - 'roles/**'
+      - '.github/workflows/deploy.yml'
+  
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'terraform/**'
+  
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TERRAFORM_VERSION: '1.5.0'
+  ANSIBLE_VERSION: '2.15.0'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform init
+      
+      - name: Terraform Validate
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform validate
+      
+      - name: Terraform Plan
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: |
+          terraform plan -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+      
+      - name: Upload Plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan
+          path: terraform/environments/${{ github.event.inputs.environment || 'dev' }}/tfplan
+      
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/environments/${{ github.event.inputs.environment || 'dev' }}/plan.txt', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan\n\`\`\`\n${plan}\n\`\`\``
+            })
+  
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: |
+      (github.event.inputs.action == 'apply' || github.ref == 'refs/heads/main') &&
+      github.event_name != 'pull_request'
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform init
+      
+      - name: Download Plan
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-plan
+          path: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+      
+      - name: Terraform Apply
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform apply -auto-approve tfplan
+      
+      - name: Save Terraform Outputs
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform output -json > terraform_output.json
+      
+      - name: Upload Terraform Outputs
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-outputs
+          path: terraform/environments/${{ github.event.inputs.environment || 'dev' }}/terraform_output.json
+  
+  ansible-deploy:
+    name: Ansible Deploy
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: |
+      (github.event.inputs.action == 'apply' || github.ref == 'refs/heads/main') &&
+      github.event_name != 'pull_request'
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Ansible
+        run: |
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          pip install pyyaml
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Download Terraform Outputs
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-outputs
+          path: ./
+      
+      - name: Update Ansible Inventory
+        run: |
+          python3 scripts/update_inventory_from_terraform.py \
+            --environment ${{ github.event.inputs.environment || 'dev' }}
+      
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+      
+      - name: Wait for VMs
+        run: sleep 60
+      
+      - name: Test Connectivity
+        run: |
+          ansible -i inventory/vm/${{ github.event.inputs.environment || 'dev' }}.yml \
+            all -m ping
+      
+      - name: Deploy with Ansible
+        run: |
+          ansible-playbook \
+            -i inventory/vm/${{ github.event.inputs.environment || 'dev' }}.yml \
+            playbooks/deploy_vm_all.yml \
+            -e "deploy_env=${{ github.event.inputs.environment || 'dev' }}"
+      
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Nautobot URL: https://$(cat terraform_output.json | jq -r '.lb_public_ip.value')" >> $GITHUB_STEP_SUMMARY
+
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'destroy'
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform init
+      
+      - name: Terraform Destroy
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        run: terraform destroy -auto-approve
