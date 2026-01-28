@@ -108,69 +108,45 @@ module "redis" {
 }
 
 # Nautobot Web Application VMs
-module "nautobot_web" {
+# Compute Resources (Web, Worker, Scheduler VMs)
+module "compute" {
   source = "./modules/compute"
 
+  project_name        = var.project_name
   environment         = var.environment
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = module.network.app_subnet_id
   
-  vm_name_prefix      = "nautobot-web"
-  vm_count            = var.web_vm_count
-  vm_size             = var.web_vm_size
+  subnet_app_id       = module.network.app_subnet_id
+  subnet_data_id      = module.network.subnet_data_id
+  lb_backend_pool_id  = module.load_balancer.backend_pool_id
+  
   admin_username      = var.admin_username
-  ssh_public_key_path = var.ssh_public_key_path
+  admin_ssh_public_key = var.ssh_public_key
+  boot_diagnostics_storage_uri = ""  # Will be added after storage module
   
-  backend_pool_id     = module.load_balancer.backend_pool_id
+  # PostgreSQL Configuration
+  postgres_private_ip = "10.0.3.10"
+  postgres_vm_size    = var.postgres_vm_size
   
-  tags = merge(local.common_tags, {
-    Role = "Web"
-    Component = "Nautobot-App"
-  })
+  # Redis Configuration
+  redis_private_ip    = "10.0.3.11"
+  redis_vm_size       = var.redis_vm_size
+  
+  # Scheduler Configuration
+  scheduler_vm_size   = var.scheduler_vm_size
+  
+  # Web VMSS Configuration
+  web_vm_size         = var.web_vm_size
+  web_instance_count  = var.web_vm_count
+  
+  # Worker VMSS Configuration
+  worker_vm_size      = var.worker_vm_size
+  worker_instance_count = var.worker_vm_count
+  
+  tags = local.common_tags
 }
 
-# Nautobot Worker VMs
-module "nautobot_worker" {
-  source = "./modules/compute"
-
-  environment         = var.environment
-  location            = var.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = module.network.app_subnet_id
-  
-  vm_name_prefix      = "nautobot-worker"
-  vm_count            = var.worker_vm_count
-  vm_size             = var.worker_vm_size
-  admin_username      = var.admin_username
-  ssh_public_key_path = var.ssh_public_key_path
-  
-  tags = merge(local.common_tags, {
-    Role = "Worker"
-    Component = "Nautobot-Worker"
-  })
-}
-
-# Nautobot Scheduler VMs
-module "nautobot_scheduler" {
-  source = "./modules/compute"
-
-  environment         = var.environment
-  location            = var.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = module.network.app_subnet_id
-  
-  vm_name_prefix      = "nautobot-scheduler"
-  vm_count            = var.scheduler_vm_count
-  vm_size             = var.scheduler_vm_size
-  admin_username      = var.admin_username
-  ssh_public_key_path = var.ssh_public_key_path
-  
-  tags = merge(local.common_tags, {
-    Role = "Scheduler"
-    Component = "Nautobot-Scheduler"
-  })
-}
 
 # Load Balancer for Nautobot Web
 module "load_balancer" {

@@ -103,6 +103,12 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_rsa.pub"
 }
 
+variable "ssh_public_key" {
+  description = "SSH public key content"
+  type        = string
+  default     = ""
+}
+
 variable "web_vm_count" {
   description = "Number of Nautobot web VMs"
   type        = number
@@ -150,6 +156,19 @@ variable "lb_sku" {
   description = "Load balancer SKU (Basic or Standard)"
   type        = string
   default     = "Standard"
+}
+
+# VM Size Configuration
+variable "postgres_vm_size" {
+  description = "PostgreSQL VM size"
+  type        = string
+  default     = "Standard_D2s_v3"
+}
+
+variable "redis_vm_size" {
+  description = "Redis VM size"
+  type        = string
+  default     = "Standard_B2s"
 }
 
 # Storage Configuration
