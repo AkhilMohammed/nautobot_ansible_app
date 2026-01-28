@@ -17,10 +17,13 @@ stages:
       - job: Terraform
         displayName: 'Terraform Deployment'
         steps:
-          - task: TerraformInstaller@0
+          - bash: |
+              # Install Terraform
+              wget -O terraform.zip https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
+              unzip terraform.zip
+              sudo mv terraform /usr/local/bin/
+              terraform version
             displayName: 'Install Terraform'
-            inputs:
-              terraformVersion: '1.7.0'
           
           - bash: |
               set -e
