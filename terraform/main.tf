@@ -130,11 +130,11 @@ module "compute" {
   boot_diagnostics_storage_uri = ""  # Will be added after storage module
   
   # PostgreSQL Configuration
-  postgres_private_ip = "10.0.3.10"
+  postgres_private_ip = "10.10.2.10"
   postgres_vm_size    = var.postgres_vm_size
   
   # Redis Configuration
-  redis_private_ip    = "10.0.3.11"
+  redis_private_ip    = "10.10.2.11"
   redis_vm_size       = var.redis_vm_size
   
   # Scheduler Configuration

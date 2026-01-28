@@ -7,7 +7,6 @@ resource "azurerm_public_ip" "lb" {
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
   sku                 = var.lb_sku
-  zones               = var.lb_sku == "Standard" ? var.availability_zones : []
 
   tags = merge(var.tags, {
     Component = "LoadBalancer"
