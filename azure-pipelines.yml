@@ -1,0 +1,123 @@
+trigger:
+  branches:
+    include:
+      - main
+      - feat/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: terraform-credentials
+
+stages:
+  - stage: Terraform_Deploy
+    displayName: 'Deploy Azure Infrastructure'
+    jobs:
+      - job: Terraform
+        displayName: 'Terraform Deployment'
+        steps:
+          - task: TerraformInstaller@0
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.7.0'
+          
+          - bash: |
+              set -e
+              cd terraform
+              
+              # Create backend config
+              cat > backend-dev.hcl << EOF
+              resource_group_name  = "terraform-state-rg"
+              storage_account_name = "$(STORAGE_ACCOUNT_NAME)"
+              container_name       = "tfstate"
+              key                  = "dev.terraform.tfstate"
+              access_key           = "$(STORAGE_KEY)"
+              EOF
+              
+              # Initialize Terraform
+              echo "Initializing Terraform..."
+              terraform init -backend-config=backend-dev.hcl
+              
+              # Validate
+              echo "Validating Terraform configuration..."
+              terraform validate
+              
+              # Plan
+              echo "Planning deployment..."
+              terraform plan \
+                -var-file=environments/dev.tfvars \
+                -var="db_admin_password=$(DB_ADMIN_PASSWORD)" \
+                -out=tfplan
+              
+              # Apply
+              echo "Applying Terraform configuration..."
+              terraform apply -auto-approve tfplan
+              
+              # Output results
+              echo "Deployment complete! Outputs:"
+              terraform output -json > $(Build.ArtifactStagingDirectory)/terraform-outputs.json
+              terraform output
+              
+            displayName: 'Deploy Infrastructure with Terraform'
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Terraform Outputs'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'terraform-outputs'
+
+  - stage: Ansible_Deploy
+    displayName: 'Deploy Nautobot Application'
+    dependsOn: Terraform_Deploy
+    condition: succeeded()
+    jobs:
+      - job: Ansible
+        displayName: 'Ansible Configuration'
+        steps:
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Terraform Outputs'
+            inputs:
+              artifactName: 'terraform-outputs'
+          
+          - bash: |
+              set -e
+              
+              # Install dependencies
+              echo "Installing Ansible and dependencies..."
+              sudo apt-get update -qq
+              sudo apt-get install -y ansible python3-pip sshpass
+              pip3 install pyyaml jinja2 azure-cli
+              
+              # Generate Ansible inventory from Terraform outputs
+              echo "Generating Ansible inventory..."
+              python3 scripts/terraform_to_ansible.py dev || echo "Inventory generation skipped"
+              
+              # Display generated inventory
+              if [ -f "inventory/vm/dev_dynamic.yml" ]; then
+                echo "Generated inventory:"
+                cat inventory/vm/dev_dynamic.yml
+              fi
+              
+            displayName: 'Setup Ansible Environment'
+
+          - bash: |
+              set -e
+              
+              # Note: Ansible deployment to VMs requires SSH access
+              # For now, this stage prepares the environment
+              # Manual deployment: ansible-playbook -i inventory/vm/dev_dynamic.yml playbooks/deploy_vm_all.yml
+              
+              echo "✅ Infrastructure deployed successfully!"
+              echo "📋 Next steps:"
+              echo "1. SSH to VMs using the private key"
+              echo "2. Run: ansible-playbook -i inventory/vm/dev_dynamic.yml playbooks/deploy_vm_all.yml"
+              echo ""
+              echo "Or deploy manually from Cloud Shell with access to private key"
+              
+            displayName: 'Prepare Ansible Deployment'

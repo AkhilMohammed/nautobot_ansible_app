@@ -13,8 +13,18 @@ output "subnet_frontend_id" {
   value       = azurerm_subnet.frontend.id
 }
 
+output "lb_subnet_id" {
+  description = "Load Balancer subnet ID (alias for frontend)"
+  value       = azurerm_subnet.frontend.id
+}
+
 output "subnet_app_id" {
   description = "Application subnet ID"
+  value       = azurerm_subnet.app.id
+}
+
+output "app_subnet_id" {
+  description = "Application subnet ID (alias)"
   value       = azurerm_subnet.app.id
 }
 
