@@ -176,13 +176,11 @@ module "nautobot_scheduler" {
 module "load_balancer" {
   source = "./modules/loadbalancer"
 
+  project_name        = var.project_name
   environment         = var.environment
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = module.network.lb_subnet_id
-  
-  frontend_ip_allocation = var.lb_frontend_ip_allocation
-  sku                    = var.lb_sku
+  lb_sku              = var.lb_sku
   
   tags = local.common_tags
 }
