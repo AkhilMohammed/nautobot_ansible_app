@@ -30,7 +30,7 @@ web_vm_size        = "Standard_D2s_v3"
 worker_vm_count    = 1
 worker_vm_size     = "Standard_D2s_v3"
 scheduler_vm_count = 1
-scheduler_vm_size  = "Standard_B2ms"
+scheduler_vm_size  = "Standard_B1s"  # 1 vCPU, 1GB RAM - within free tier quota
 
 # Storage
 storage_replication_type = "LRS"

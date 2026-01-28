@@ -80,25 +80,25 @@ output "scheduler_private_ip" {
   value       = module.compute.scheduler_private_ip
 }
 
-output "postgres_vm_id" {
-  description = "PostgreSQL VM ID"
-  value       = module.compute.postgres_vm_id
-}
-
-output "postgres_private_ip" {
-  description = "PostgreSQL private IP"
-  value       = module.compute.postgres_private_ip
-}
-
-output "redis_vm_id" {
-  description = "Redis VM ID"
-  value       = module.compute.redis_vm_id
-}
-
-output "redis_private_ip" {
-  description = "Redis private IP"
-  value       = module.compute.redis_private_ip
-}
+# output "postgres_vm_id" {
+#   description = "PostgreSQL VM ID"
+#   value       = module.compute.postgres_vm_id
+# }
+#
+# output "postgres_private_ip" {
+#   description = "PostgreSQL private IP"
+#   value       = module.compute.postgres_private_ip
+# }
+#
+# output "redis_vm_id" {
+#   description = "Redis VM ID"
+#   value       = module.compute.redis_vm_id
+# }
+#
+# output "redis_private_ip" {
+#   description = "Redis private IP"
+#   value       = module.compute.redis_private_ip
+# }
 
 # Load Balancer
 output "load_balancer_public_ip" {

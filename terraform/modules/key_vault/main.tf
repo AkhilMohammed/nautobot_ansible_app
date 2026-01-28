@@ -38,5 +38,9 @@ resource "azurerm_key_vault_secret" "secrets" {
   value        = each.value
   key_vault_id = azurerm_key_vault.main.id
 
+  lifecycle {
+    ignore_changes = [value]
+  }
+
   depends_on = [azurerm_key_vault.main]
 }

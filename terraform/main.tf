@@ -129,13 +129,13 @@ module "compute" {
   admin_ssh_public_key = var.ssh_public_key
   boot_diagnostics_storage_uri = ""  # Will be added after storage module
   
-  # PostgreSQL Configuration
-  postgres_private_ip = "10.10.2.10"
-  postgres_vm_size    = var.postgres_vm_size
+  # PostgreSQL Configuration (DISABLED - Using Azure Database for PostgreSQL)
+  # postgres_private_ip = "10.10.2.10"
+  # postgres_vm_size    = var.postgres_vm_size
   
-  # Redis Configuration
-  redis_private_ip    = "10.10.2.11"
-  redis_vm_size       = var.redis_vm_size
+  # Redis Configuration (DISABLED - Using Azure Cache for Redis)
+  # redis_private_ip    = "10.10.2.11"
+  # redis_vm_size       = var.redis_vm_size
   
   # Scheduler Configuration
   scheduler_vm_size   = var.scheduler_vm_size

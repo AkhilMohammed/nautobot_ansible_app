@@ -1,32 +1,32 @@
-output "postgres_vm_id" {
-  description = "PostgreSQL VM ID"
-  value       = azurerm_linux_virtual_machine.postgres.id
-}
-
-output "postgres_vm_name" {
-  description = "PostgreSQL VM name"
-  value       = azurerm_linux_virtual_machine.postgres.name
-}
-
-output "postgres_private_ip" {
-  description = "PostgreSQL private IP address"
-  value       = azurerm_network_interface.postgres.private_ip_address
-}
-
-output "redis_vm_id" {
-  description = "Redis VM ID"
-  value       = azurerm_linux_virtual_machine.redis.id
-}
-
-output "redis_vm_name" {
-  description = "Redis VM name"
-  value       = azurerm_linux_virtual_machine.redis.name
-}
-
-output "redis_private_ip" {
-  description = "Redis private IP address"
-  value       = azurerm_network_interface.redis.private_ip_address
-}
+# output "postgres_vm_id" {
+#   description = "PostgreSQL VM ID"
+#   value       = azurerm_linux_virtual_machine.postgres.id
+# }
+#
+# output "postgres_vm_name" {
+#   description = "PostgreSQL VM name"
+#   value       = azurerm_linux_virtual_machine.postgres.name
+# }
+#
+# output "postgres_private_ip" {
+#   description = "PostgreSQL private IP address"
+#   value       = azurerm_network_interface.postgres.private_ip_address
+# }
+#
+# output "redis_vm_id" {
+#   description = "Redis VM ID"
+#   value       = azurerm_linux_virtual_machine.redis.id
+# }
+#
+# output "redis_vm_name" {
+#   description = "Redis VM name"
+#   value       = azurerm_linux_virtual_machine.redis.name
+# }
+#
+# output "redis_private_ip" {
+#   description = "Redis private IP address"
+#   value       = azurerm_network_interface.redis.private_ip_address
+# }
 
 output "scheduler_vm_id" {
   description = "Scheduler VM ID"

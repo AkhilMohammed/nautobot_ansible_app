@@ -19,146 +19,146 @@ resource "azurerm_ssh_public_key" "nautobot" {
   tags = var.tags
 }
 
-# === PostgreSQL VM ===
-resource "azurerm_network_interface" "postgres" {
-  name                = "nic-postgres-${var.environment}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
+# === PostgreSQL VM === (DISABLED - Using Azure Database for PostgreSQL)
+# resource "azurerm_network_interface" "postgres" {
+#   name                = "nic-postgres-${var.environment}"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#
+#   ip_configuration {
+#     name                          = "internal"
+#     subnet_id                     = var.subnet_data_id
+#     private_ip_address_allocation = "Static"
+#     private_ip_address            = var.postgres_private_ip
+#   }
+#
+#   tags = var.tags
+# }
 
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = var.subnet_data_id
-    private_ip_address_allocation = "Static"
-    private_ip_address            = var.postgres_private_ip
-  }
+# resource "azurerm_managed_disk" "postgres_data" {
+#   name                 = "disk-postgres-data-${var.environment}"
+#   location             = var.location
+#   resource_group_name  = var.resource_group_name
+#   storage_account_type = var.postgres_disk_type
+#   create_option        = "Empty"
+#   disk_size_gb         = var.postgres_disk_size_gb
+#
+#   tags = merge(var.tags, {
+#     Component = "PostgreSQL"
+#     DataDisk  = "true"
+#   })
+# }
 
-  tags = var.tags
-}
+# resource "azurerm_linux_virtual_machine" "postgres" {
+#   name                = "vm-postgres-${var.environment}"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#   size                = var.postgres_vm_size
+#   admin_username      = var.admin_username
+#
+#   network_interface_ids = [
+#     azurerm_network_interface.postgres.id,
+#   ]
+#
+#   admin_ssh_key {
+#     username   = var.admin_username
+#     public_key = var.admin_ssh_public_key
+#   }
+#
+#   os_disk {
+#     name                 = "osdisk-postgres-${var.environment}"
+#     caching              = "ReadWrite"
+#     storage_account_type = "Premium_LRS"
+#   }
+#
+#   source_image_reference {
+#     publisher = "Canonical"
+#     offer     = "0001-com-ubuntu-server-jammy"
+#     sku       = "22_04-lts-gen2"
+#     version   = "latest"
+#   }
+#
+#   identity {
+#     type         = "UserAssigned"
+#     identity_ids = [azurerm_user_assigned_identity.nautobot.id]
+#   }
+#
+#   boot_diagnostics {
+#     storage_account_uri = var.boot_diagnostics_storage_uri
+#   }
+#
+#   tags = merge(var.tags, {
+#     Component = "PostgreSQL"
+#     Ansible   = "vm_postgres"
+#   })
+# }
+#
+# resource "azurerm_virtual_machine_data_disk_attachment" "postgres" {
+#   managed_disk_id    = azurerm_managed_disk.postgres_data.id
+#   virtual_machine_id = azurerm_linux_virtual_machine.postgres.id
+#   lun                = 0
+#   caching            = "ReadWrite"
+# }
 
-resource "azurerm_managed_disk" "postgres_data" {
-  name                 = "disk-postgres-data-${var.environment}"
-  location             = var.location
-  resource_group_name  = var.resource_group_name
-  storage_account_type = var.postgres_disk_type
-  create_option        = "Empty"
-  disk_size_gb         = var.postgres_disk_size_gb
-
-  tags = merge(var.tags, {
-    Component = "PostgreSQL"
-    DataDisk  = "true"
-  })
-}
-
-resource "azurerm_linux_virtual_machine" "postgres" {
-  name                = "vm-postgres-${var.environment}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  size                = var.postgres_vm_size
-  admin_username      = var.admin_username
-
-  network_interface_ids = [
-    azurerm_network_interface.postgres.id,
-  ]
-
-  admin_ssh_key {
-    username   = var.admin_username
-    public_key = var.admin_ssh_public_key
-  }
-
-  os_disk {
-    name                 = "osdisk-postgres-${var.environment}"
-    caching              = "ReadWrite"
-    storage_account_type = "Premium_LRS"
-  }
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
-  }
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.nautobot.id]
-  }
-
-  boot_diagnostics {
-    storage_account_uri = var.boot_diagnostics_storage_uri
-  }
-
-  tags = merge(var.tags, {
-    Component = "PostgreSQL"
-    Ansible   = "vm_postgres"
-  })
-}
-
-resource "azurerm_virtual_machine_data_disk_attachment" "postgres" {
-  managed_disk_id    = azurerm_managed_disk.postgres_data.id
-  virtual_machine_id = azurerm_linux_virtual_machine.postgres.id
-  lun                = 0
-  caching            = "ReadWrite"
-}
-
-# === Redis VM ===
-resource "azurerm_network_interface" "redis" {
-  name                = "nic-redis-${var.environment}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = var.subnet_data_id
-    private_ip_address_allocation = "Static"
-    private_ip_address            = var.redis_private_ip
-  }
-
-  tags = var.tags
-}
-
-resource "azurerm_linux_virtual_machine" "redis" {
-  name                = "vm-redis-${var.environment}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  size                = var.redis_vm_size
-  admin_username      = var.admin_username
-
-  network_interface_ids = [
-    azurerm_network_interface.redis.id,
-  ]
-
-  admin_ssh_key {
-    username   = var.admin_username
-    public_key = var.admin_ssh_public_key
-  }
-
-  os_disk {
-    name                 = "osdisk-redis-${var.environment}"
-    caching              = "ReadWrite"
-    storage_account_type = "Premium_LRS"
-  }
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
-  }
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.nautobot.id]
-  }
-
-  boot_diagnostics {
-    storage_account_uri = var.boot_diagnostics_storage_uri
-  }
-
-  tags = merge(var.tags, {
-    Component = "Redis"
-    Ansible   = "vm_redis"
-  })
-}
+# === Redis VM === (DISABLED - Using Azure Cache for Redis)
+# resource "azurerm_network_interface" "redis" {
+#   name                = "nic-redis-${var.environment}"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#
+#   ip_configuration {
+#     name                          = "internal"
+#     subnet_id                     = var.subnet_data_id
+#     private_ip_address_allocation = "Static"
+#     private_ip_address            = var.redis_private_ip
+#   }
+#
+#   tags = var.tags
+# }
+#
+# resource "azurerm_linux_virtual_machine" "redis" {
+#   name                = "vm-redis-${var.environment}"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#   size                = var.redis_vm_size
+#   admin_username      = var.admin_username
+#
+#   network_interface_ids = [
+#     azurerm_network_interface.redis.id,
+#   ]
+#
+#   admin_ssh_key {
+#     username   = var.admin_username
+#     public_key = var.admin_ssh_public_key
+#   }
+#
+#   os_disk {
+#     name                 = "osdisk-redis-${var.environment}"
+#     caching              = "ReadWrite"
+#     storage_account_type = "Premium_LRS"
+#   }
+#
+#   source_image_reference {
+#     publisher = "Canonical"
+#     offer     = "0001-com-ubuntu-server-jammy"
+#     sku       = "22_04-lts-gen2"
+#     version   = "latest"
+#   }
+#
+#   identity {
+#     type         = "UserAssigned"
+#     identity_ids = [azurerm_user_assigned_identity.nautobot.id]
+#   }
+#
+#   boot_diagnostics {
+#     storage_account_uri = var.boot_diagnostics_storage_uri
+#   }
+#
+#   tags = merge(var.tags, {
+#     Component = "Redis"
+#     Ansible   = "vm_redis"
+#   })
+# }
 
 # === Nautobot Scheduler VM ===
 resource "azurerm_network_interface" "scheduler" {
@@ -292,8 +292,8 @@ resource "azurerm_monitor_autoscale_setting" "web" {
     name = "AutoScale"
 
     capacity {
-      default = var.web_instance_count
-      minimum = var.web_min_instances
+      default = 1
+      minimum = 1
       maximum = var.web_max_instances
     }
 
@@ -409,8 +409,8 @@ resource "azurerm_monitor_autoscale_setting" "worker" {
     name = "AutoScale"
 
     capacity {
-      default = var.worker_instance_count
-      minimum = var.worker_min_instances
+      default = 1
+      minimum = 1
       maximum = var.worker_max_instances
     }
 
