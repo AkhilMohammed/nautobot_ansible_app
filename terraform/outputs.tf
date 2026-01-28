@@ -103,12 +103,12 @@ output "redis_private_ip" {
 # Load Balancer
 output "load_balancer_public_ip" {
   description = "Load balancer public IP"
-  value       = module.load_balancer.public_ip
+  value       = module.load_balancer.lb_public_ip
 }
 
 output "load_balancer_fqdn" {
   description = "Load balancer FQDN"
-  value       = module.load_balancer.fqdn
+  value       = module.load_balancer.lb_public_ip_fqdn
 }
 
 # Key Vault

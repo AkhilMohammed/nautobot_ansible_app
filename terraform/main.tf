@@ -123,7 +123,7 @@ module "compute" {
   
   subnet_app_id       = module.network.app_subnet_id
   subnet_data_id      = module.network.subnet_data_id
-  lb_backend_pool_id  = module.load_balancer.backend_pool_id
+  lb_backend_pool_id  = module.load_balancer.lb_backend_pool_id
   
   admin_username      = var.admin_username
   admin_ssh_public_key = var.ssh_public_key
