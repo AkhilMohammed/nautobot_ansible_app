@@ -48,13 +48,14 @@ resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure" {
 }
 
 # PostgreSQL Firewall Rules - Allow Application Subnet
-resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_app_subnet" {
-  count            = length(var.allowed_subnet_ids)
-  name             = "allow-app-subnet-${count.index}"
-  server_id        = azurerm_postgresql_flexible_server.main.id
-  start_ip_address = var.app_subnet_cidrs[count.index]
-  end_ip_address   = var.app_subnet_cidrs[count.index]
-}
+# Note: Using Azure services access instead of specific subnet rules
+# resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_app_subnet" {
+#   count            = length(var.allowed_subnet_ids)
+#   name             = "allow-app-subnet-${count.index}"
+#   server_id        = azurerm_postgresql_flexible_server.main.id
+#   start_ip_address = var.app_subnet_cidrs[count.index]
+#   end_ip_address   = var.app_subnet_cidrs[count.index]
+# }
 
 # PostgreSQL Configuration - Max Connections
 resource "azurerm_postgresql_flexible_server_configuration" "max_connections" {

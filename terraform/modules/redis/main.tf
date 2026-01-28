@@ -46,14 +46,15 @@ resource "azurerm_redis_cache" "main" {
 }
 
 # Redis Firewall Rules - Allow application subnet
-resource "azurerm_redis_firewall_rule" "app_subnet" {
-  count               = length(var.allowed_subnet_cidrs)
-  name                = "allow-app-subnet-${count.index}"
-  redis_cache_name    = azurerm_redis_cache.main.name
-  resource_group_name = var.resource_group_name
-  start_ip            = cidrhost(var.allowed_subnet_cidrs[count.index], 0)
-  end_ip              = cidrhost(var.allowed_subnet_cidrs[count.index], -1)
-}
+# Note: Using public access for dev/test, comment out for production
+# resource "azurerm_redis_firewall_rule" "app_subnet" {
+#   count               = length(var.allowed_subnet_cidrs)
+#   name                = "allow_app_subnet_${count.index}"
+#   redis_cache_name    = azurerm_redis_cache.main.name
+#   resource_group_name = var.resource_group_name
+#   start_ip            = cidrhost(var.allowed_subnet_cidrs[count.index], 0)
+#   end_ip              = cidrhost(var.allowed_subnet_cidrs[count.index], -1)
+# }
 
 # Private Endpoint for Redis (optional)
 resource "azurerm_private_endpoint" "redis" {
