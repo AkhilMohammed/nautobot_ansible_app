@@ -1,6 +1,6 @@
 # Development Environment Configuration
 environment = "dev"
-location    = "eastus2"  # eastus2 supports PostgreSQL and more VM SKUs
+location    = "westus2"  # westus2 supports PostgreSQL and has better VM availability
 
 # Network Configuration
 vnet_address_space = ["10.10.0.0/16"]
