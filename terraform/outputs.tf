@@ -136,6 +136,7 @@ output "storage_account_primary_blob_endpoint" {
 # Ansible Inventory Data
 output "ansible_inventory" {
   description = "Data for Ansible inventory generation"
+  sensitive   = true
   value = {
     scheduler_server = {
       host = module.compute.scheduler_private_ip
