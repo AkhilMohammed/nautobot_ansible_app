@@ -1,4 +1,10 @@
 # General Configuration
+variable "project_name" {
+  description = "Project name for resource naming"
+  type        = string
+  default     = "nautobot"
+}
+
 variable "environment" {
   description = "Environment name (dev, test, prod)"
   type        = string

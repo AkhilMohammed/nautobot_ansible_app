@@ -59,7 +59,7 @@ module "network" {
   environment         = var.environment
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
-  vnet_address_space  = var.vnet_address_space
+  vnet_address_space  = var.vnet_address_space[0]
   subnet_frontend     = var.subnet_frontend
   subnet_app          = var.subnet_app
   subnet_data         = var.subnet_data

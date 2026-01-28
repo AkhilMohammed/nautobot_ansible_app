@@ -59,37 +59,45 @@ output "redis_primary_access_key" {
   sensitive   = true
 }
 
-# Nautobot Web VMs
-output "nautobot_web_vm_ids" {
-  description = "Nautobot web VM IDs"
-  value       = module.nautobot_web.vm_ids
+# Compute Outputs
+output "web_vmss_id" {
+  description = "Web VMSS ID"
+  value       = module.compute.web_vmss_id
 }
 
-output "nautobot_web_vm_private_ips" {
-  description = "Nautobot web VM private IPs"
-  value       = module.nautobot_web.vm_private_ips
+output "worker_vmss_id" {
+  description = "Worker VMSS ID"
+  value       = module.compute.worker_vmss_id
 }
 
-# Nautobot Worker VMs
-output "nautobot_worker_vm_ids" {
-  description = "Nautobot worker VM IDs"
-  value       = module.nautobot_worker.vm_ids
+output "scheduler_vm_id" {
+  description = "Scheduler VM ID"
+  value       = module.compute.scheduler_vm_id
 }
 
-output "nautobot_worker_vm_private_ips" {
-  description = "Nautobot worker VM private IPs"
-  value       = module.nautobot_worker.vm_private_ips
+output "scheduler_private_ip" {
+  description = "Scheduler private IP"
+  value       = module.compute.scheduler_private_ip
 }
 
-# Nautobot Scheduler VMs
-output "nautobot_scheduler_vm_ids" {
-  description = "Nautobot scheduler VM IDs"
-  value       = module.nautobot_scheduler.vm_ids
+output "postgres_vm_id" {
+  description = "PostgreSQL VM ID"
+  value       = module.compute.postgres_vm_id
 }
 
-output "nautobot_scheduler_vm_private_ips" {
-  description = "Nautobot scheduler VM private IPs"
-  value       = module.nautobot_scheduler.vm_private_ips
+output "postgres_private_ip" {
+  description = "PostgreSQL private IP"
+  value       = module.compute.postgres_private_ip
+}
+
+output "redis_vm_id" {
+  description = "Redis VM ID"
+  value       = module.compute.redis_vm_id
+}
+
+output "redis_private_ip" {
+  description = "Redis private IP"
+  value       = module.compute.redis_private_ip
 }
 
 # Load Balancer
@@ -129,22 +137,8 @@ output "storage_account_primary_blob_endpoint" {
 output "ansible_inventory" {
   description = "Data for Ansible inventory generation"
   value = {
-    web_servers = {
-      hosts = module.nautobot_web.vm_private_ips
-      vars = {
-        ansible_user = var.admin_username
-        role = "web"
-      }
-    }
-    worker_servers = {
-      hosts = module.nautobot_worker.vm_private_ips
-      vars = {
-        ansible_user = var.admin_username
-        role = "worker"
-      }
-    }
-    scheduler_servers = {
-      hosts = module.nautobot_scheduler.vm_private_ips
+    scheduler_server = {
+      host = module.compute.scheduler_private_ip
       vars = {
         ansible_user = var.admin_username
         role = "scheduler"
