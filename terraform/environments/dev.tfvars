@@ -24,13 +24,13 @@ redis_capacity = 0          # 250 MB
 # Load Balancer Configuration
 lb_sku = "Standard"  # Changed from Basic to support availability zones
 
-# VM Configuration (All B1s to fit within 4 vCPU quota: 1+1+1=3 vCPUs)
+# VM Configuration (2 vCPU VMs to fit within 4 vCPU quota: 2+2=4 vCPUs, no scheduler)
 web_vm_count       = 1
-web_vm_size        = "Standard_B1s"  # 1 vCPU, 1GB RAM
+web_vm_size        = "Standard_D2s_v3"  # 2 vCPU, 8GB RAM - available in centralus
 worker_vm_count    = 1
-worker_vm_size     = "Standard_B1s"  # 1 vCPU, 1GB RAM
+worker_vm_size     = "Standard_D2s_v3"  # 2 vCPU, 8GB RAM - available in centralus
 scheduler_vm_count = 1
-scheduler_vm_size  = "Standard_B1s"  # 1 vCPU, 1GB RAM
+scheduler_vm_size  = "Standard_B1s"  # Not used, scheduler disabled
 
 # Storage
 storage_replication_type = "LRS"
