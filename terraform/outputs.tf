@@ -138,13 +138,13 @@ output "ansible_inventory" {
   description = "Data for Ansible inventory generation"
   sensitive   = true
   value = {
-    scheduler_server = {
-      host = module.compute.scheduler_private_ip
-      vars = {
-        ansible_user = var.admin_username
-        role = "scheduler"
-      }
-    }
+    # scheduler_server = {
+    #   host = module.compute.scheduler_private_ip
+    #   vars = {
+    #     ansible_user = var.admin_username
+    #     role = "scheduler"
+    #   }
+    # }
     database = {
       host = module.database.postgresql_server_fqdn
       port = 5432
