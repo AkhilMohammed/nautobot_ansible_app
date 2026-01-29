@@ -70,15 +70,15 @@ output "worker_vmss_id" {
   value       = module.compute.worker_vmss_id
 }
 
-output "scheduler_vm_id" {
-  description = "Scheduler VM ID"
-  value       = module.compute.scheduler_vm_id
-}
-
-output "scheduler_private_ip" {
-  description = "Scheduler private IP"
-  value       = module.compute.scheduler_private_ip
-}
+# output "scheduler_vm_id" {
+#   description = "Scheduler VM ID"
+#   value       = module.compute.scheduler_vm_id
+# }
+#
+# output "scheduler_private_ip" {
+#   description = "Scheduler private IP"
+#   value       = module.compute.scheduler_private_ip
+# }
 
 # output "postgres_vm_id" {
 #   description = "PostgreSQL VM ID"

@@ -28,20 +28,20 @@
 #   value       = azurerm_network_interface.redis.private_ip_address
 # }
 
-output "scheduler_vm_id" {
-  description = "Scheduler VM ID"
-  value       = azurerm_linux_virtual_machine.scheduler.id
-}
-
-output "scheduler_vm_name" {
-  description = "Scheduler VM name"
-  value       = azurerm_linux_virtual_machine.scheduler.name
-}
-
-output "scheduler_private_ip" {
-  description = "Scheduler private IP address"
-  value       = azurerm_network_interface.scheduler.private_ip_address
-}
+# output "scheduler_vm_id" {
+#   description = "Scheduler VM ID"
+#   value       = azurerm_linux_virtual_machine.scheduler.id
+# }
+#
+# output "scheduler_vm_name" {
+#   description = "Scheduler VM name"
+#   value       = azurerm_linux_virtual_machine.scheduler.name
+# }
+#
+# output "scheduler_private_ip" {
+#   description = "Scheduler private IP address"
+#   value       = azurerm_network_interface.scheduler.private_ip_address
+# }
 
 output "web_vmss_id" {
   description = "Web VMSS ID"
