@@ -11,9 +11,260 @@ variables:
   - group: nautobot-azure-secrets
 
 stages:
-  - stage: Ansible_Deploy
-    displayName: 'Deploy Nautobot Application'
+  - stage: Build
+    displayName: 'Build and Test'
     jobs:
+      - job: Validate
+        displayName: 'Validate Code'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+            displayName: 'Use Python 3.11'
+
+          - bash: |
+              set -e
+              echo "Installing dependencies..."
+              pip install ansible ansible-lint yamllint
+            displayName: 'Install Dependencies'
+
+          - bash: |
+              set -e
+              echo "Linting Ansible playbooks..."
+              ansible-lint playbooks/*.yml || true
+            displayName: 'Lint Ansible Playbooks'
+
+          - bash: |
+              set -e
+              echo "Validating playbook syntax..."
+              ansible-playbook --syntax-check playbooks/deploy_app_only.yml
+              ansible-playbook --syntax-check playbooks/deploy_vm_all.yml
+            displayName: 'Syntax Check Playbooks'
+
+          - bash: |
+              set -e
+              echo "Validating YAML files..."
+              yamllint -c .yamllint group_vars/ inventory/ || true
+            displayName: 'Validate YAML Files'
+
+      - job: Package
+        displayName: 'Package Application'
+        dependsOn: Validate
+        steps:
+          - bash: |
+              set -e
+              echo "Creating deployment package..."
+              mkdir -p $(Build.ArtifactStagingDirectory)/nautobot-deploy
+              
+              # Copy Ansible files
+              cp -r playbooks $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              cp -r roles $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              cp -r group_vars $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              cp -r inventory $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              cp -r files $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              cp ansible.cfg $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+              
+              echo "Package created successfully"
+              ls -la $(Build.ArtifactStagingDirectory)/nautobot-deploy/
+            displayName: 'Create Deployment Package'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifacts'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/nautobot-deploy'
+              ArtifactName: 'nautobot-package'
+
+  - stage: Deploy_Web
+    displayName: 'Deploy Web Servers'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: DeployWeb
+        displayName: 'Deploy to Web VMSS'
+        environment: 'nautobot-dev-web'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: nautobot-package
+                  displayName: 'Download Package'
+
+                - bash: |
+                    set -e
+                    echo "Installing Ansible..."
+                    pip install ansible azure-cli
+                  displayName: 'Install Ansible'
+
+                - bash: |
+                    set -e
+                    
+                    # Login to Azure
+                    az login --service-principal \
+                      -u $(ARM_CLIENT_ID) \
+                      -p $(ARM_CLIENT_SECRET) \
+                      --tenant $(ARM_TENANT_ID)
+                    az account set --subscription $(ARM_SUBSCRIPTION_ID)
+                    
+                    # Get Web VMSS IPs
+                    echo "Getting Web VM IPs..."
+                    WEB_IPS=$(az vmss nic list \
+                      --resource-group dev-nautobot-rg \
+                      --vmss-name vmss-nautobot-web-dev \
+                      --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
+                    
+                    echo "Web VMs found: $WEB_IPS"
+                    
+                    # Create inventory for web servers
+                    cd $(Pipeline.Workspace)/nautobot-package
+                    mkdir -p inventory/dynamic
+                    cat > inventory/dynamic/web.yml <<EOF
+                    all:
+                      children:
+                        web_servers:
+                          hosts:
+                    $(echo "$WEB_IPS" | while read ip; do echo "        $ip:"; done)
+                      vars:
+                        ansible_user: azureuser
+                        environment: dev
+                    EOF
+                    
+                    echo "Web inventory created:"
+                    cat inventory/dynamic/web.yml
+                  displayName: 'Create Web Inventory'
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+                - bash: |
+                    set -e
+                    cd $(Pipeline.Workspace)/nautobot-package
+                    
+                    # Setup SSH key
+                    mkdir -p ~/.ssh
+                    echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+                    chmod 600 ~/.ssh/id_rsa
+                    
+                    # Write vault password
+                    echo "$(VAULT_PASSWORD)" > vault_pass.txt
+                    
+                    # Deploy to web servers
+                    echo "Deploying Nautobot to web servers..."
+                    ansible-playbook -i inventory/dynamic/web.yml \
+                      playbooks/deploy_app_only.yml \
+                      --vault-password-file vault_pass.txt \
+                      --limit web_servers \
+                      -e "deploy_env=dev" \
+                      -e "nautobot_role=web" \
+                      -v
+                    
+                    # Cleanup
+                    rm -f ~/.ssh/id_rsa vault_pass.txt
+                    
+                    echo "✅ Web servers deployment complete!"
+                  displayName: 'Deploy Nautobot to Web'
+                  env:
+                    SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
+                    VAULT_PASSWORD: $(VAULT_PASSWORD)
+                    ANSIBLE_HOST_KEY_CHECKING: 'False'
+
+  - stage: Deploy_Worker
+    displayName: 'Deploy Worker Servers'
+    dependsOn: Deploy_Web
+    condition: succeeded()
+    jobs:
+      - deployment: DeployWorker
+        displayName: 'Deploy to Worker VMSS'
+        environment: 'nautobot-dev-worker'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: nautobot-package
+                  displayName: 'Download Package'
+
+                - bash: |
+                    set -e
+                    echo "Installing Ansible..."
+                    pip install ansible azure-cli
+                  displayName: 'Install Ansible'
+
+                - bash: |
+                    set -e
+                    
+                    # Login to Azure
+                    az login --service-principal \
+                      -u $(ARM_CLIENT_ID) \
+                      -p $(ARM_CLIENT_SECRET) \
+                      --tenant $(ARM_TENANT_ID)
+                    az account set --subscription $(ARM_SUBSCRIPTION_ID)
+                    
+                    # Get Worker VMSS IPs
+                    echo "Getting Worker VM IPs..."
+                    WORKER_IPS=$(az vmss nic list \
+                      --resource-group dev-nautobot-rg \
+                      --vmss-name vmss-nautobot-worker-dev \
+                      --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
+                    
+                    echo "Worker VMs found: $WORKER_IPS"
+                    
+                    # Create inventory for worker servers
+                    cd $(Pipeline.Workspace)/nautobot-package
+                    mkdir -p inventory/dynamic
+                    cat > inventory/dynamic/worker.yml <<EOF
+                    all:
+                      children:
+                        worker_servers:
+                          hosts:
+                    $(echo "$WORKER_IPS" | while read ip; do echo "        $ip:"; done)
+                      vars:
+                        ansible_user: azureuser
+                        environment: dev
+                    EOF
+                    
+                    echo "Worker inventory created:"
+                    cat inventory/dynamic/worker.yml
+                  displayName: 'Create Worker Inventory'
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+                - bash: |
+                    set -e
+                    cd $(Pipeline.Workspace)/nautobot-package
+                    
+                    # Setup SSH key
+                    mkdir -p ~/.ssh
+                    echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+                    chmod 600 ~/.ssh/id_rsa
+                    
+                    # Write vault password
+                    echo "$(VAULT_PASSWORD)" > vault_pass.txt
+                    
+                    # Deploy to worker servers
+                    echo "Deploying Nautobot to worker servers..."
+                    ansible-playbook -i inventory/dynamic/worker.yml \
+                      playbooks/deploy_app_only.yml \
+                      --vault-password-file vault_pass.txt \
+                      --limit worker_servers \
+                      -e "deploy_env=dev" \
+                      -e "nautobot_role=worker" \
+                      -v
+                    
+                    # Cleanup
+                    rm -f ~/.ssh/id_rsa vault_pass.txt
+                    
+                    echo "✅ Worker servers deployment complete!"
+                  displayName: 'Deploy Nautobot to Worker'
+                  env:
+                    SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
+                    VAULT_PASSWORD: $(VAULT_PASSWORD)
+                    ANSIBLE_HOST_KEY_CHECKING: 'False'
       - job: Ansible
         displayName: 'Ansible Configuration'
         steps:
