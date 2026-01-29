@@ -57,8 +57,9 @@ variable "postgres_vm_size" {
 }
 
 variable "postgres_private_ip" {
-  description = "Static private IP for PostgreSQL"
+  description = "Static private IP for PostgreSQL (UNUSED - Using managed service)"
   type        = string
+  default     = ""
 }
 
 variable "postgres_disk_size_gb" {
@@ -81,8 +82,9 @@ variable "redis_vm_size" {
 }
 
 variable "redis_private_ip" {
-  description = "Static private IP for Redis"
+  description = "Static private IP for Redis (UNUSED - Using managed service)"
   type        = string
+  default     = ""
 }
 
 # Scheduler VM Configuration
