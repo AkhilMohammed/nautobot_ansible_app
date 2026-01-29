@@ -11,83 +11,12 @@ variables:
   - group: nautobot-azure-secrets
 
 stages:
-  - stage: Terraform_Deploy
-    displayName: 'Deploy Azure Infrastructure'
-    jobs:
-      - job: Terraform
-        displayName: 'Terraform Deployment'
-        steps:
-          - bash: |
-              # Install Terraform
-              wget -O terraform.zip https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
-              unzip terraform.zip
-              sudo mv terraform /usr/local/bin/
-              terraform version
-            displayName: 'Install Terraform'
-          
-          - bash: |
-              set -e
-              cd terraform
-              
-              # Create backend config
-              cat > backend-dev.hcl << EOF
-              resource_group_name  = "terraform-state-rg"
-              storage_account_name = "$(STORAGE_ACCOUNT_NAME)"
-              container_name       = "tfstate"
-              key                  = "dev.terraform.tfstate"
-              access_key           = "$(STORAGE_KEY)"
-              EOF
-              
-              # Initialize Terraform
-              echo "Initializing Terraform..."
-              terraform init -backend-config=backend-dev.hcl
-              
-              # Validate
-              echo "Validating Terraform configuration..."
-              terraform validate
-              
-              # Plan
-              echo "Planning deployment..."
-              terraform plan \
-                -var-file=environments/dev.tfvars \
-                -var="db_admin_password=$(DB_ADMIN_PASSWORD)" \
-                -out=tfplan
-              
-              # Apply
-              echo "Applying Terraform configuration..."
-              terraform apply -auto-approve tfplan
-              
-              # Output results
-              echo "Deployment complete! Outputs:"
-              terraform output -json > $(Build.ArtifactStagingDirectory)/terraform-outputs.json
-              terraform output
-              
-            displayName: 'Deploy Infrastructure with Terraform'
-            env:
-              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Terraform Outputs'
-            inputs:
-              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-              ArtifactName: 'terraform-outputs'
-
   - stage: Ansible_Deploy
     displayName: 'Deploy Nautobot Application'
-    dependsOn: Terraform_Deploy
-    condition: succeeded()
     jobs:
       - job: Ansible
         displayName: 'Ansible Configuration'
         steps:
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Terraform Outputs'
-            inputs:
-              artifactName: 'terraform-outputs'
-          
           - bash: |
               set -e
               
