@@ -221,7 +221,7 @@ resource "azurerm_ssh_public_key" "nautobot" {
 #     Component = "Scheduler"
 #     Ansible   = "vm_nautobot_scheduler"
 #   })
-}
+# }
 
 # === Nautobot Web VM Scale Set ===
 resource "azurerm_linux_virtual_machine_scale_set" "web" {
