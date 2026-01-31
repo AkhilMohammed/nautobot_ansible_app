@@ -119,8 +119,13 @@ stages:
               
               # Setup SSH key for jump box
               mkdir -p ~/.ssh
-              echo "$JUMPBOX_SSH_KEY" > ~/.ssh/jumpbox_key
+              # Write key with proper formatting (handle newlines)
+              echo "$JUMPBOX_SSH_KEY" | sed 's/\\n/\n/g' > ~/.ssh/jumpbox_key
               chmod 600 ~/.ssh/jumpbox_key
+              
+              # Verify key format
+              echo "Verifying SSH key format..."
+              head -1 ~/.ssh/jumpbox_key
               
               # Copy files to jump box (they're already there, but update if changed)
               scp -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no -r \
