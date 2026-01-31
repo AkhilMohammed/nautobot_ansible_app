@@ -130,9 +130,13 @@ stages:
               echo "Running deployment from jump box..."
               cd ~/playbooks
               
+              # Create temporary vault password file
+              echo "HCLtech@2025" > /tmp/vault_pass.txt
+              chmod 600 /tmp/vault_pass.txt
+              
               # Run deployment to web and worker VMs
               ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
-                --vault-password-file <(echo 'HCLtech@2025') \
+                --vault-password-file /tmp/vault_pass.txt \
                 -e env_name=dev \
                 -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
                 -e "postgresql_database=nautobot" \
@@ -142,6 +146,9 @@ stages:
                 -e "redis_ssl=true" \
                 -e "use_managed_services=true" \
                 -vv
+              
+              # Cleanup
+              rm -f /tmp/vault_pass.txt
               
               echo "✅ Deployment complete!"
               REMOTE_SCRIPT
