@@ -123,36 +123,29 @@ stages:
                 playbooks roles group_vars ansible.cfg \
                 azureuser@20.9.9.127:~/ || echo "Files already on jump box"
               
+              # Export passwords from Azure DevOps variables
+              export POSTGRESQL_PASSWORD="$(POSTGRESQL_PASSWORD)"
+              export REDIS_PASSWORD="$(REDIS_PASSWORD)"
+              
               # SSH to jump box and run deployment
-              ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
-              set -e
-              
-              echo "Running deployment from jump box..."
-              cd ~/playbooks
-              
-              # Create temporary vault password file
-              echo "HCLtech@2025" > /tmp/vault_pass.txt
-              chmod 600 /tmp/vault_pass.txt
-              
-              # Run deployment to web and worker VMs
-              ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
-                --vault-password-file /tmp/vault_pass.txt \
-                -e deploy_env=dev \
-                -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
-                -e "postgresql_database=nautobot" \
-                -e "postgresql_user=nautobotadmin" \
-                -e "postgresql_password=$POSTGRESQL_PASSWORD" \
-                -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
-                -e "redis_port=6380" \
-                -e "redis_password=$REDIS_PASSWORD" \
-                -e "redis_ssl=true" \
-                -e "use_managed_services=true" \
-                --skip-tags "postgres,redis" \
-                -vv
-              
-              # Cleanup
-              rm -f /tmp/vault_pass.txt
-              
-              echo "✅ Deployment complete!"
-              REMOTE_SCRIPT
+              ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
+                "cd ~/playbooks && \
+                echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
+                chmod 600 /tmp/vault_pass.txt && \
+                ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
+                  --vault-password-file /tmp/vault_pass.txt \
+                  -e deploy_env=dev \
+                  -e 'postgresql_host=dev-nautobot-psql.postgres.database.azure.com' \
+                  -e 'postgresql_database=nautobot' \
+                  -e 'postgresql_user=nautobotadmin' \
+                  -e 'postgresql_password=${POSTGRESQL_PASSWORD}' \
+                  -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
+                  -e 'redis_port=6380' \
+                  -e 'redis_password=${REDIS_PASSWORD}' \
+                  -e 'redis_ssl=true' \
+                  -e 'use_managed_services=true' \
+                  --skip-tags 'postgres,redis' \
+                  -vv && \
+                rm -f /tmp/vault_pass.txt && \
+                echo '✅ Deployment complete!'"
             displayName: 'Deploy via Jump Box'
