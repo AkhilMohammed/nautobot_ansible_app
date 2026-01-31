@@ -36,7 +36,7 @@ stages:
               echo "Validating playbook syntax..."
               
               # Write vault password from pipeline variable
-              echo "$(VAULT_PASSWORD)" > /tmp/vault_pass.txt
+              echo "$VAULT_PASSWORD" > /tmp/vault_pass.txt
               
               ansible-playbook --syntax-check playbooks/deploy_app_only.yml \
                 -e "deploy_env=dev" \
