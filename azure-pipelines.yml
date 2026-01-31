@@ -145,6 +145,7 @@ stages:
                 -e "redis_port=6380" \
                 -e "redis_ssl=true" \
                 -e "use_managed_services=true" \
+                --skip-tags "postgres,redis" \
                 -vv
               
               # Cleanup
