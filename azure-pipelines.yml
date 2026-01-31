@@ -115,7 +115,7 @@ stages:
             inputs:
               knownHostsEntry: '20.9.9.127 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...'
               sshPublicKey: $(JUMPBOX_SSH_PUBLIC_KEY)
-              sshKeySecureFile: 'azure-nautobot-key'
+              sshKeySecureFile: 'azure-nautobot-key.pem'
           
           - bash: |
               set -e
