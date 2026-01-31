@@ -124,7 +124,10 @@ stages:
               echo "Copying deployment package to jump box..."
               cd $(Pipeline.Workspace)/nautobot-package
               
-              # Copy files to jump box (SSH key installed by previous task)
+              # Use ssh-agent that has the key loaded by InstallSSHKey task
+              eval $(ssh-agent -s)
+              
+              # Copy files to jump box
               scp -o StrictHostKeyChecking=no -r \
                 playbooks roles group_vars ansible.cfg \
                 azureuser@20.9.9.127:~/
