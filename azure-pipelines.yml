@@ -123,11 +123,7 @@ stages:
                 playbooks roles group_vars ansible.cfg \
                 azureuser@20.9.9.127:~/ || echo "Files already on jump box"
               
-              # Export passwords from Azure DevOps variables
-              export POSTGRESQL_PASSWORD="$(POSTGRESQL_PASSWORD)"
-              export REDIS_PASSWORD="$(REDIS_PASSWORD)"
-              
-              # SSH to jump box and run deployment
+              # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
                 "cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
@@ -138,12 +134,13 @@ stages:
                   -e 'postgresql_host=dev-nautobot-psql.postgres.database.azure.com' \
                   -e 'postgresql_database=nautobot' \
                   -e 'postgresql_user=nautobotadmin' \
-                  -e 'postgresql_password=${POSTGRESQL_PASSWORD}' \
+                  -e 'postgresql_password=$(POSTGRESQL_PASSWORD)' \
                   -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
                   -e 'redis_port=6380' \
-                  -e 'redis_password=${REDIS_PASSWORD}' \
+                  -e 'redis_password=$(REDIS_PASSWORD)' \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
+                  --limit 'nautobot_web,nautobot_worker' \
                   --skip-tags 'postgres,redis' \
                   -vv && \
                 rm -f /tmp/vault_pass.txt && \
