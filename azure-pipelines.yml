@@ -98,13 +98,13 @@ stages:
               PathtoPublish: '$(Build.ArtifactStagingDirectory)/nautobot-deploy'
               ArtifactName: 'nautobot-package'
 
-  - stage: Deploy_Web
-    displayName: 'Deploy Web Servers'
+  - stage: Deploy
+    displayName: 'Deploy Nautobot'
     dependsOn: Build
     condition: succeeded()
     jobs:
-      - job: DeployWeb
-        displayName: 'Deploy to Web VMSS'
+      - job: DeployAll
+        displayName: 'Deploy via Jump Box'
         steps:
           - download: current
             artifact: nautobot-package
@@ -112,174 +112,56 @@ stages:
 
           - bash: |
               set -e
-              echo "Installing Ansible and Azure CLI..."
-              python3.11 -m pip install --user ansible azure-cli
-            displayName: 'Install Ansible'
-
-          - bash: |
-              set -e
               
-              # Login to Azure
-              az login --service-principal \
-                -u $(ARM_CLIENT_ID) \
-                -p $(ARM_CLIENT_SECRET) \
-                --tenant $(ARM_TENANT_ID)
-              az account set --subscription $(ARM_SUBSCRIPTION_ID)
-              
-              # Get Web VMSS IPs
-              echo "Getting Web VM count and load balancer IP..."
-              WEB_COUNT=$(az vmss list-instances -g dev-nautobot-rg -n vmss-nautobot-web-dev --query "length(@)" -o tsv)
-              LB_IP=$(az network public-ip show -g dev-nautobot-rg -n pip-lb-nautobot-dev --query "ipAddress" -o tsv)
-              
-              echo "Web VMs: $WEB_COUNT, Load Balancer IP: $LB_IP"
-              
-              # Create inventory for web servers using load balancer IP
-              cd $(Pipeline.Workspace)/nautobot-package
-              mkdir -p inventory/dynamic
-              
-              # Write inventory file with echo - use LB IP with SSH NAT port
-              echo "all:" > inventory/dynamic/web.yml
-              echo "  children:" >> inventory/dynamic/web.yml
-              echo "    web_servers:" >> inventory/dynamic/web.yml
-              echo "      hosts:" >> inventory/dynamic/web.yml
-              echo "        $LB_IP:" >> inventory/dynamic/web.yml
-              echo "      vars:" >> inventory/dynamic/web.yml
-              echo "        ansible_user: azureuser" >> inventory/dynamic/web.yml
-              echo "        ansible_port: 2201" >> inventory/dynamic/web.yml
-              
-              echo "Web inventory created:"
-              cat inventory/dynamic/web.yml
-            displayName: 'Create Web Inventory'
-            env:
-              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-          - bash: |
-              set -e
+              # Copy package to jump box
+              echo "Copying deployment package to jump box..."
               cd $(Pipeline.Workspace)/nautobot-package
               
-              # Setup SSH key
+              # Setup SSH key for jump box
               mkdir -p ~/.ssh
-              echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-              chmod 600 ~/.ssh/id_rsa
+              echo "$JUMPBOX_SSH_KEY" > ~/.ssh/jumpbox_key
+              chmod 600 ~/.ssh/jumpbox_key
               
-              # Write vault password
-              echo "$VAULT_PASSWORD" > vault_pass.txt
+              # Copy files to jump box (they're already there, but update if changed)
+              scp -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no -r \
+                playbooks roles group_vars ansible.cfg \
+                azureuser@20.9.9.127:~/
               
-              # Deploy to web servers (only app role, skip postgres/redis)
-              echo "Deploying Nautobot to web servers..."
-              ansible-playbook -i inventory/dynamic/web.yml \
-                playbooks/deploy_vm_all.yml \
-                --vault-password-file vault_pass.txt \
-                --tags "app" \
-                -e "deploy_env=dev" \
+              echo "✅ Files copied to jump box"
+            displayName: 'Copy Files to Jump Box'
+            env:
+              JUMPBOX_SSH_KEY: $(SSH_PRIVATE_KEY)
+
+          - bash: |
+              set -e
+              
+              echo "Deploying Nautobot via jump box..."
+              
+              # SSH to jump box and run deployment
+              ssh -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
+              set -e
+              
+              echo "Running deployment from jump box..."
+              cd ~/playbooks
+              
+              # Run deployment to web and worker VMs
+              ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
+                --vault-password-file <(echo 'HCLtech@2025') \
+                -e env_name=dev \
                 -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
+                -e "postgresql_database=nautobot" \
+                -e "postgresql_user=nautobotadmin" \
                 -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
                 -e "redis_port=6380" \
+                -e "redis_ssl=true" \
                 -e "use_managed_services=true" \
-                -v
+                -vv
+              
+              echo "✅ Deployment complete!"
+              REMOTE_SCRIPT
               
               # Cleanup
-              rm -f ~/.ssh/id_rsa vault_pass.txt
-              
-              echo "✅ Web servers deployment complete!"
-            displayName: 'Deploy Nautobot to Web'
+              rm -f ~/.ssh/jumpbox_key
+            displayName: 'Deploy via Jump Box'
             env:
-              SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
-              VAULT_PASSWORD: $(VAULT_PASSWORD)
-              ANSIBLE_HOST_KEY_CHECKING: 'False'
-
-  - stage: Deploy_Worker
-    displayName: 'Deploy Worker Servers'
-    dependsOn: Deploy_Web
-    condition: succeeded()
-    jobs:
-      - job: DeployWorker
-        displayName: 'Deploy to Worker VMSS'
-        steps:
-          - download: current
-            artifact: nautobot-package
-            displayName: 'Download Package'
-
-          - bash: |
-              set -e
-              echo "Installing Ansible and Azure CLI..."
-              python3.11 -m pip install --user ansible azure-cli
-            displayName: 'Install Ansible'
-
-          - bash: |
-              set -e
-              
-              # Login to Azure
-              az login --service-principal \
-                -u $(ARM_CLIENT_ID) \
-                -p $(ARM_CLIENT_SECRET) \
-                --tenant $(ARM_TENANT_ID)
-              az account set --subscription $(ARM_SUBSCRIPTION_ID)
-              
-              # Get Worker VMSS IPs
-              echo "Getting Worker VM count and load balancer IP..."
-              WORKER_COUNT=$(az vmss list-instances -g dev-nautobot-rg -n vmss-nautobot-worker-dev --query "length(@)" -o tsv)
-              LB_IP=$(az network public-ip show -g dev-nautobot-rg -n pip-lb-nautobot-dev --query "ipAddress" -o tsv)
-              
-              echo "Worker VMs: $WORKER_COUNT, Load Balancer IP: $LB_IP"
-              
-              # Create inventory for worker servers using load balancer IP
-              cd $(Pipeline.Workspace)/nautobot-package
-              mkdir -p inventory/dynamic
-              
-              # Write inventory file with echo - use LB IP with SSH NAT port
-              echo "all:" > inventory/dynamic/worker.yml
-              echo "  children:" >> inventory/dynamic/worker.yml
-              echo "    worker_servers:" >> inventory/dynamic/worker.yml
-              echo "      hosts:" >> inventory/dynamic/worker.yml
-              echo "        $LB_IP:" >> inventory/dynamic/worker.yml
-              echo "      vars:" >> inventory/dynamic/worker.yml
-              echo "        ansible_user: azureuser" >> inventory/dynamic/worker.yml
-              echo "        ansible_port: 2202" >> inventory/dynamic/worker.yml
-              
-              echo "Worker inventory created:"
-              cat inventory/dynamic/worker.yml
-            displayName: 'Create Worker Inventory'
-            env:
-              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-          - bash: |
-              set -e
-              cd $(Pipeline.Workspace)/nautobot-package
-              
-              # Setup SSH key
-              mkdir -p ~/.ssh
-              echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-              chmod 600 ~/.ssh/id_rsa
-              
-              # Write vault password
-              echo "$VAULT_PASSWORD" > vault_pass.txt
-              
-              # Deploy to worker servers (only worker role, skip postgres/redis)
-              echo "Deploying Nautobot to worker servers..."
-              ansible-playbook -i inventory/dynamic/worker.yml \
-                playbooks/deploy_vm_all.yml \
-                --vault-password-file vault_pass.txt \
-                --tags "worker" \
-                -e "deploy_env=dev" \
-                -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
-                -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
-                -e "redis_port=6380" \
-                -e "use_managed_services=true" \
-                -v
-              
-              # Cleanup
-              rm -f ~/.ssh/id_rsa vault_pass.txt
-              
-              echo "✅ Worker servers deployment complete!"
-            displayName: 'Deploy Nautobot to Worker'
-            env:
-              SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
-              VAULT_PASSWORD: $(VAULT_PASSWORD)
-              ANSIBLE_HOST_KEY_CHECKING: 'False'
+              JUMPBOX_SSH_KEY: $(SSH_PRIVATE_KEY)
