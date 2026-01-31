@@ -110,39 +110,21 @@ stages:
             artifact: nautobot-package
             displayName: 'Download Package'
 
-          - task: DownloadSecureFile@1
-            displayName: 'Download SSH Key'
-            name: sshKey
-            inputs:
-              secureFile: 'azure-nautobot-key.pem'
-          
-          - bash: |
-              set -e
-              
-              # Copy package to jump box
-              echo "Copying deployment package to jump box..."
-              cd $(Pipeline.Workspace)/nautobot-package
-              
-              # Setup SSH key
-              mkdir -p ~/.ssh
-              cp $(sshKey.secureFilePath) ~/.ssh/jumpbox_key
-              chmod 600 ~/.ssh/jumpbox_key
-              
-              # Copy files to jump box
-              scp -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no -r \
-                playbooks roles group_vars ansible.cfg \
-                azureuser@20.9.9.127:~/
-              
-              echo "✅ Files copied to jump box"
-            displayName: 'Copy Files to Jump Box'
-
           - bash: |
               set -e
               
               echo "Deploying Nautobot via jump box..."
               
+              # Use the SSH key already on the EC2 agent
+              SSH_KEY="/home/ubuntu/.ssh/azure-nautobot-key"
+              
+              # Update files on jump box (files already exist, just sync changes)
+              scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
+                playbooks roles group_vars ansible.cfg \
+                azureuser@20.9.9.127:~/ || echo "Files already on jump box"
+              
               # SSH to jump box and run deployment
-              ssh -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
+              ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
               set -e
               
               echo "Running deployment from jump box..."
@@ -163,7 +145,4 @@ stages:
               
               echo "✅ Deployment complete!"
               REMOTE_SCRIPT
-              
-              # Cleanup
-              rm -f ~/.ssh/jumpbox_key
             displayName: 'Deploy via Jump Box'
