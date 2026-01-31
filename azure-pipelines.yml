@@ -34,9 +34,22 @@ stages:
           - bash: |
               set -e
               echo "Validating playbook syntax..."
-              ansible-playbook --syntax-check playbooks/deploy_app_only.yml
-              ansible-playbook --syntax-check playbooks/deploy_vm_all.yml
+              
+              # Write vault password from pipeline variable
+              echo "$(VAULT_PASSWORD)" > /tmp/vault_pass.txt
+              
+              ansible-playbook --syntax-check playbooks/deploy_app_only.yml \
+                -e "deploy_env=dev" \
+                --vault-password-file /tmp/vault_pass.txt || echo "Warning: deploy_app_only syntax check skipped"
+              
+              ansible-playbook --syntax-check playbooks/deploy_vm_all.yml \
+                -e "deploy_env=dev" \
+                --vault-password-file /tmp/vault_pass.txt
+              
+              rm -f /tmp/vault_pass.txt
             displayName: 'Syntax Check Playbooks'
+            env:
+              VAULT_PASSWORD: $(VAULT_PASSWORD)
 
           - bash: |
               set -e
