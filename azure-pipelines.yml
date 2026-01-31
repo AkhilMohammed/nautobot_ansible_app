@@ -263,9 +263,3 @@ stages:
               SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
               VAULT_PASSWORD: $(VAULT_PASSWORD)
               ANSIBLE_HOST_KEY_CHECKING: 'False'
-              
-            displayName: 'Deploy Nautobot with Ansible'
-            env:
-              SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
-              VAULT_PASSWORD: $(VAULT_PASSWORD)
-              ANSIBLE_HOST_KEY_CHECKING: 'False'
