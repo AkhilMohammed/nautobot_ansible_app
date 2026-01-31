@@ -141,8 +141,10 @@ stages:
                 -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
                 -e "postgresql_database=nautobot" \
                 -e "postgresql_user=nautobotadmin" \
+                -e "postgresql_password=$POSTGRESQL_PASSWORD" \
                 -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
                 -e "redis_port=6380" \
+                -e "redis_password=$REDIS_PASSWORD" \
                 -e "redis_ssl=true" \
                 -e "use_managed_services=true" \
                 --skip-tags "postgres,redis" \

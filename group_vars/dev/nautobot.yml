@@ -32,10 +32,11 @@ nautobot_db:
 
 # Redis Configuration
 nautobot_redis:
-  host: "localhost"  # or dev-redis.internal
-  port: 6379
+  host: "{{ redis_host | default('localhost') }}"
+  port: "{{ redis_port | default(6379) }}"
   database: 0
-  password: ""  # empty for dev, use vault_redis_password for secured
+  password: "{{ redis_password | default('') }}"
+  ssl: "{{ redis_ssl | default(false) }}"
 
 # Celery Configuration
 nautobot_celery_broker_url: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database }}"
