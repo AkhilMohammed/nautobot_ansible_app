@@ -110,6 +110,13 @@ stages:
             artifact: nautobot-package
             displayName: 'Download Package'
 
+          - task: InstallSSHKey@0
+            displayName: 'Install Jump Box SSH Key'
+            inputs:
+              knownHostsEntry: '20.9.9.127 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...'
+              sshPublicKey: $(JUMPBOX_SSH_PUBLIC_KEY)
+              sshKeySecureFile: 'azure-nautobot-key'
+          
           - bash: |
               set -e
               
@@ -117,25 +124,13 @@ stages:
               echo "Copying deployment package to jump box..."
               cd $(Pipeline.Workspace)/nautobot-package
               
-              # Setup SSH key for jump box
-              mkdir -p ~/.ssh
-              # Decode base64 key from secure variable
-              echo "$JUMPBOX_SSH_KEY_B64" | base64 -d > ~/.ssh/jumpbox_key
-              chmod 600 ~/.ssh/jumpbox_key
-              
-              # Verify key format
-              echo "Verifying SSH key format..."
-              head -1 ~/.ssh/jumpbox_key | grep -q "BEGIN" && echo "Key format OK" || (echo "ERROR: Invalid key format" && cat ~/.ssh/jumpbox_key && exit 1)
-              
-              # Copy files to jump box (they're already there, but update if changed)
-              scp -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no -r \
+              # Copy files to jump box (SSH key installed by previous task)
+              scp -o StrictHostKeyChecking=no -r \
                 playbooks roles group_vars ansible.cfg \
                 azureuser@20.9.9.127:~/
               
               echo "✅ Files copied to jump box"
             displayName: 'Copy Files to Jump Box'
-            env:
-              JUMPBOX_SSH_KEY_B64: $(JUMPBOX_SSH_KEY_B64)
 
           - bash: |
               set -e
@@ -143,7 +138,7 @@ stages:
               echo "Deploying Nautobot via jump box..."
               
               # SSH to jump box and run deployment
-              ssh -i ~/.ssh/jumpbox_key -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
+              ssh -o StrictHostKeyChecking=no azureuser@20.9.9.127 << 'REMOTE_SCRIPT'
               set -e
               
               echo "Running deployment from jump box..."
@@ -164,9 +159,4 @@ stages:
               
               echo "✅ Deployment complete!"
               REMOTE_SCRIPT
-              
-              # Cleanup
-              rm -f ~/.ssh/jumpbox_key
             displayName: 'Deploy via Jump Box'
-            env:
-              JUMPBOX_SSH_KEY: $(SSH_PRIVATE_KEY)
