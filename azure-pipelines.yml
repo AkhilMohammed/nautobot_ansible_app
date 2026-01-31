@@ -131,7 +131,7 @@ stages:
               WEB_IPS=$(az vmss nic list \
                 --resource-group dev-nautobot-rg \
                 --vmss-name vmss-nautobot-web-dev \
-                --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
+                --query "[].ipConfigurations[0].privateIPAddress" -o tsv)
               
               echo "Web VMs found: $WEB_IPS"
               
@@ -231,7 +231,7 @@ stages:
               WORKER_IPS=$(az vmss nic list \
               --resource-group dev-nautobot-rg \
                 --vmss-name vmss-nautobot-worker-dev \
-                --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
+                --query "[].ipConfigurations[0].privateIPAddress" -o tsv)
               
               echo "Worker VMs found: $WORKER_IPS"
               
