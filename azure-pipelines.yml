@@ -127,32 +127,25 @@ stages:
               az account set --subscription $(ARM_SUBSCRIPTION_ID)
               
               # Get Web VMSS IPs
-              echo "Getting Web VM IPs..."
-              WEB_IPS=$(az vmss nic list \
-                --resource-group dev-nautobot-rg \
-                --vmss-name vmss-nautobot-web-dev \
-                --query "[].ipConfigurations[0].privateIPAddress" -o tsv)
+              echo "Getting Web VM count and load balancer IP..."
+              WEB_COUNT=$(az vmss list-instances -g dev-nautobot-rg -n vmss-nautobot-web-dev --query "length(@)" -o tsv)
+              LB_IP=$(az network public-ip show -g dev-nautobot-rg -n pip-lb-nautobot-dev --query "ipAddress" -o tsv)
               
-              echo "Web VMs found: $WEB_IPS"
+              echo "Web VMs: $WEB_COUNT, Load Balancer IP: $LB_IP"
               
-              # Create inventory for web servers
+              # Create inventory for web servers using load balancer IP
               cd $(Pipeline.Workspace)/nautobot-package
               mkdir -p inventory/dynamic
               
-              # Write inventory file with echo
+              # Write inventory file with echo - use LB IP with SSH NAT port
               echo "all:" > inventory/dynamic/web.yml
               echo "  children:" >> inventory/dynamic/web.yml
               echo "    web_servers:" >> inventory/dynamic/web.yml
               echo "      hosts:" >> inventory/dynamic/web.yml
-              
-              # Add IPs to hosts section
-              echo "$WEB_IPS" | while read ip; do
-                echo "        $ip:" >> inventory/dynamic/web.yml
-              done
-              
-              # Add vars section  
+              echo "        $LB_IP:" >> inventory/dynamic/web.yml
               echo "      vars:" >> inventory/dynamic/web.yml
               echo "        ansible_user: azureuser" >> inventory/dynamic/web.yml
+              echo "        ansible_port: 2201" >> inventory/dynamic/web.yml
               
               echo "Web inventory created:"
               cat inventory/dynamic/web.yml
@@ -227,32 +220,25 @@ stages:
               az account set --subscription $(ARM_SUBSCRIPTION_ID)
               
               # Get Worker VMSS IPs
-              echo "Getting Worker VM IPs..."
-              WORKER_IPS=$(az vmss nic list \
-              --resource-group dev-nautobot-rg \
-                --vmss-name vmss-nautobot-worker-dev \
-                --query "[].ipConfigurations[0].privateIPAddress" -o tsv)
+              echo "Getting Worker VM count and load balancer IP..."
+              WORKER_COUNT=$(az vmss list-instances -g dev-nautobot-rg -n vmss-nautobot-worker-dev --query "length(@)" -o tsv)
+              LB_IP=$(az network public-ip show -g dev-nautobot-rg -n pip-lb-nautobot-dev --query "ipAddress" -o tsv)
               
-              echo "Worker VMs found: $WORKER_IPS"
+              echo "Worker VMs: $WORKER_COUNT, Load Balancer IP: $LB_IP"
               
-              # Create inventory for worker servers
+              # Create inventory for worker servers using load balancer IP
               cd $(Pipeline.Workspace)/nautobot-package
               mkdir -p inventory/dynamic
               
-              # Write inventory file with echo
+              # Write inventory file with echo - use LB IP with SSH NAT port
               echo "all:" > inventory/dynamic/worker.yml
               echo "  children:" >> inventory/dynamic/worker.yml
               echo "    worker_servers:" >> inventory/dynamic/worker.yml
               echo "      hosts:" >> inventory/dynamic/worker.yml
-              
-              # Add IPs to hosts section
-              echo "$WORKER_IPS" | while read ip; do
-                echo "        $ip:" >> inventory/dynamic/worker.yml
-              done
-              
-              # Add vars section
+              echo "        $LB_IP:" >> inventory/dynamic/worker.yml
               echo "      vars:" >> inventory/dynamic/worker.yml
               echo "        ansible_user: azureuser" >> inventory/dynamic/worker.yml
+              echo "        ansible_port: 2202" >> inventory/dynamic/worker.yml
               
               echo "Worker inventory created:"
               cat inventory/dynamic/worker.yml
