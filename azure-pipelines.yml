@@ -146,14 +146,17 @@ stages:
               # Write vault password
               echo "$(VAULT_PASSWORD)" > vault_pass.txt
               
-              # Deploy to web servers
+              # Deploy to web servers (only app role, skip postgres/redis)
               echo "Deploying Nautobot to web servers..."
               ansible-playbook -i inventory/dynamic/web.yml \
-                playbooks/deploy_app_only.yml \
+                playbooks/deploy_vm_all.yml \
                 --vault-password-file vault_pass.txt \
-                --limit web_servers \
+                --tags "app" \
                 -e "deploy_env=dev" \
-                -e "nautobot_role=web" \
+                -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
+                -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
+                -e "redis_port=6380" \
+                -e "use_managed_services=true" \
                 -v
               
               # Cleanup
@@ -238,14 +241,17 @@ stages:
               # Write vault password
               echo "$(VAULT_PASSWORD)" > vault_pass.txt
               
-              # Deploy to worker servers
+# Deploy to worker servers (only worker role, skip postgres/redis)
               echo "Deploying Nautobot to worker servers..."
               ansible-playbook -i inventory/dynamic/worker.yml \
-                playbooks/deploy_app_only.yml \
+                playbooks/deploy_vm_all.yml \
                 --vault-password-file vault_pass.txt \
-                --limit worker_servers \
+                --tags "worker" \
                 -e "deploy_env=dev" \
-              -e "nautobot_role=worker" \
+                -e "postgresql_host=dev-nautobot-psql.postgres.database.azure.com" \
+                -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
+                -e "redis_port=6380" \
+                -e "use_managed_services=true" \
               -v
               
               # Cleanup
