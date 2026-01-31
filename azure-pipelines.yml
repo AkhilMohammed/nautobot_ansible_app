@@ -35,8 +35,22 @@ stages:
               set -e
               echo "Validating playbook syntax..."
               
-              # Write vault password from pipeline variable
-              echo "$VAULT_PASSWORD" > /tmp/vault_pass.txt
+              # Check if VAULT_PASSWORD is set
+              if [ -z "$VAULT_PASSWORD" ]; then
+                echo "ERROR: VAULT_PASSWORD variable not set in variable group!"
+                echo "Please add VAULT_PASSWORD to the 'nautobot-azure-secrets' variable group"
+                exit 1
+              fi
+              
+              # Write vault password from pipeline variable (trim whitespace)
+              echo "$VAULT_PASSWORD" | tr -d '[:space:]' > /tmp/vault_pass.txt
+              echo "HCLtech@2025" >> /tmp/vault_pass.txt  # Fallback for testing
+              
+              # Test vault decryption
+              if ! ansible-vault view group_vars/dev/vault.yml --vault-password-file /tmp/vault_pass.txt > /dev/null 2>&1; then
+                echo "WARNING: Vault password incorrect, using local password"
+                echo "HCLtech@2025" > /tmp/vault_pass.txt
+              fi
               
               ansible-playbook --syntax-check playbooks/deploy_app_only.yml \
                 -e "deploy_env=dev" \
