@@ -410,6 +410,7 @@
     nautobot_static_path: "{{ nautobot_root }}/static"
     nautobot_git_path: "{{ nautobot_root }}/git"
     nautobot_git_root: "{{ nautobot_root }}/.nautobot"
+    nautobot_jobs_root: "{{ nautobot_root }}/jobs"
     nautobot_venv: "{{ nautobot_root }}/venv"
     nautobot_config_path: "{{ nautobot_root }}/nautobot_config.py"
 
@@ -459,6 +460,7 @@
     - "{{ nautobot_static_path }}"
     - "{{ nautobot_git_path }}"
     - "{{ nautobot_git_root }}"
+    - "{{ nautobot_jobs_root }}"
 
 - name: Create log file
   ansible.builtin.file:

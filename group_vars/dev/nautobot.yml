@@ -11,6 +11,7 @@ nautobot_media_path: "{{ nautobot_root }}/media"
 nautobot_static_path: "{{ nautobot_root }}/static"
 nautobot_git_path: "{{ nautobot_root }}/git"
 nautobot_git_root: "{{ nautobot_root }}/.nautobot"
+nautobot_jobs_root: "{{ nautobot_root }}/jobs"
 python_version: "python3.11"
 nautobot_environment: dev
 nautobot_debug: true
