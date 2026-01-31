@@ -5,7 +5,7 @@ trigger:
       - feat/*
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'ec2-agents'
 
 variables:
   - group: nautobot-azure-secrets
