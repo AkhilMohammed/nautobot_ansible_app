@@ -7,14 +7,14 @@
   gather_facts: true
 
   vars:
-    # Allow overriding env from CLI: -e environment=dev
-    # environment: "{{ environment | default(hostvars[inventory_hostname].environment) }}"
-    deploy_env: "{{ deploy_env | default(hostvars[inventory_hostname].environment) }}"
+    # Allow overriding env from CLI: -e deploy_env=dev
+    # deploy_env is expected to be passed from command line or defaults to 'dev'
+    env_name: "{{ deploy_env | default('dev') }}"
 
   vars_files:
     - "../group_vars/all/nautobot.yml"
-    - "../group_vars/{{ deploy_env }}/nautobot.yml"
-    - "../group_vars/{{ deploy_env }}/vault.yml"
+    - "../group_vars/{{ env_name }}/nautobot.yml"
+    - "../group_vars/{{ env_name }}/vault.yml"
 
   pre_tasks:
     - name: Show deployment context

@@ -4,15 +4,19 @@
   become: true
   gather_facts: true
 
+  vars:
+    # deploy_env is expected to be passed from command line or defaults to 'dev'
+    env_name: "{{ deploy_env | default('dev') }}"
+
   vars_files:
     - "../group_vars/all/nautobot.yml"
-    - "../group_vars/{{ environment }}/nautobot.yml"
-    - "../group_vars/{{ environment }}/vault.yml"
+    - "../group_vars/{{ env_name }}/nautobot.yml"
+    - "../group_vars/{{ env_name }}/vault.yml"
 
   pre_tasks:
     - name: Display deployment info
       debug:
-        msg: "Deploying Nautobot {{ nautobot_version }} to {{ inventory_hostname }} ({{ environment }})"
+        msg: "Deploying Nautobot {{ nautobot_version }} to {{ inventory_hostname }} ({{ env_name }})"
 
   roles:
     - role: vm_postgres
