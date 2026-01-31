@@ -139,12 +139,11 @@ stages:
               cd $(Pipeline.Workspace)/nautobot-package
               mkdir -p inventory/dynamic
               
-              cat > inventory/dynamic/web.yml << 'WEBEOF'
-all:
-  children:
-    web_servers:
-      hosts:
-WEBEOF
+              # Write inventory file with echo
+              echo "all:" > inventory/dynamic/web.yml
+              echo "  children:" >> inventory/dynamic/web.yml
+              echo "    web_servers:" >> inventory/dynamic/web.yml
+              echo "      hosts:" >> inventory/dynamic/web.yml
               
               # Add IPs to hosts section
               echo "$WEB_IPS" | while read ip; do
@@ -152,10 +151,8 @@ WEBEOF
               done
               
               # Add vars section  
-              cat >> inventory/dynamic/web.yml << 'WEBEOF'
-      vars:
-        ansible_user: azureuser
-WEBEOF
+              echo "      vars:" >> inventory/dynamic/web.yml
+              echo "        ansible_user: azureuser" >> inventory/dynamic/web.yml
               
               echo "Web inventory created:"
               cat inventory/dynamic/web.yml
@@ -242,12 +239,11 @@ WEBEOF
               cd $(Pipeline.Workspace)/nautobot-package
               mkdir -p inventory/dynamic
               
-              cat > inventory/dynamic/worker.yml << 'WORKEREOF'
-all:
-  children:
-    worker_servers:
-      hosts:
-WORKEREOF
+              # Write inventory file with echo
+              echo "all:" > inventory/dynamic/worker.yml
+              echo "  children:" >> inventory/dynamic/worker.yml
+              echo "    worker_servers:" >> inventory/dynamic/worker.yml
+              echo "      hosts:" >> inventory/dynamic/worker.yml
               
               # Add IPs to hosts section
               echo "$WORKER_IPS" | while read ip; do
@@ -255,10 +251,8 @@ WORKEREOF
               done
               
               # Add vars section
-              cat >> inventory/dynamic/worker.yml << 'WORKEREOF'
-      vars:
-        ansible_user: azureuser
-WORKEREOF
+              echo "      vars:" >> inventory/dynamic/worker.yml
+              echo "        ansible_user: azureuser" >> inventory/dynamic/worker.yml
               
               echo "Worker inventory created:"
               cat inventory/dynamic/worker.yml
