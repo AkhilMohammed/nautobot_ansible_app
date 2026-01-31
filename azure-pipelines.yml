@@ -241,7 +241,7 @@ stages:
               # Write vault password
               echo "$(VAULT_PASSWORD)" > vault_pass.txt
               
-# Deploy to worker servers (only worker role, skip postgres/redis)
+              # Deploy to worker servers (only worker role, skip postgres/redis)
               echo "Deploying Nautobot to worker servers..."
               ansible-playbook -i inventory/dynamic/worker.yml \
                 playbooks/deploy_vm_all.yml \
@@ -252,7 +252,7 @@ stages:
                 -e "redis_host=dev-nautobot-redis.redis.cache.windows.net" \
                 -e "redis_port=6380" \
                 -e "use_managed_services=true" \
-              -v
+                -v
               
               # Cleanup
               rm -f ~/.ssh/id_rsa vault_pass.txt
@@ -263,90 +263,6 @@ stages:
               SSH_PRIVATE_KEY: $(SSH_PRIVATE_KEY)
               VAULT_PASSWORD: $(VAULT_PASSWORD)
               ANSIBLE_HOST_KEY_CHECKING: 'False'
-      - job: Ansible
-        displayName: 'Ansible Configuration'
-        steps:
-          - bash: |
-              set -e
-              
-              # Install dependencies
-              echo "Installing Ansible and dependencies..."
-              sudo apt-get update -qq
-              sudo apt-get install -y ansible python3-pip
-              pip3 install pyyaml jinja2 azure-cli
-              
-              # Login to Azure using service principal
-              az login --service-principal \
-                -u $(ARM_CLIENT_ID) \
-                -p $(ARM_CLIENT_SECRET) \
-                --tenant $(ARM_TENANT_ID)
-              az account set --subscription $(ARM_SUBSCRIPTION_ID)
-              
-              # Get VMSS IPs dynamically
-              echo "Getting VM IPs from Azure..."
-              WEB_IPS=$(az vmss nic list \
-                --resource-group dev-nautobot-rg \
-                --vmss-name vmss-nautobot-web-dev \
-                --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
-              
-              WORKER_IPS=$(az vmss nic list \
-                --resource-group dev-nautobot-rg \
-                --vmss-name vmss-nautobot-worker-dev \
-                --query "[].ipConfigurations[0].privateIpAddress" -o tsv)
-              
-              # Create dynamic inventory
-              echo "Creating Ansible inventory..."
-              mkdir -p inventory/vm
-              cat > inventory/vm/dev_dynamic.yml <<EOF
-              all:
-                children:
-                  web_servers:
-                    hosts:
-              $(echo "$WEB_IPS" | while read ip; do echo "        $ip:"; done)
-                  worker_servers:
-                    hosts:
-              $(echo "$WORKER_IPS" | while read ip; do echo "        $ip:"; done)
-                vars:
-                  ansible_user: azureuser
-                  environment: dev
-              EOF
-              
-              cat inventory/vm/dev_dynamic.yml
-              
-            displayName: 'Setup Ansible Environment'
-            env:
-              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-          - bash: |
-              set -e
-              
-              # Setup SSH key
-              mkdir -p ~/.ssh
-              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
-              chmod 600 ~/.ssh/id_rsa
-              
-              # Write vault password
-              echo "$(VAULT_PASSWORD)" > vault_pass.txt
-              
-              # Check connectivity
-              echo "Testing VM connectivity..."
-              ansible all -i inventory/vm/dev_dynamic.yml -m ping || echo "Some VMs not reachable yet"
-              
-              # Run deployment playbook
-              echo "Deploying Nautobot application..."
-              ansible-playbook -i inventory/vm/dev_dynamic.yml \
-                playbooks/deploy_app_only.yml \
-                --vault-password-file vault_pass.txt \
-                -e "deploy_env=dev" \
-                -v || echo "Deployment completed with warnings"
-              
-              # Cleanup
-              rm -f ~/.ssh/id_rsa vault_pass.txt
-              
-              echo "✅ Nautobot deployment complete!"
               
             displayName: 'Deploy Nautobot with Ansible'
             env:
