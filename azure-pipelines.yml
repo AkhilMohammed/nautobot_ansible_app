@@ -140,11 +140,11 @@ stages:
               mkdir -p inventory/dynamic
               
               cat > inventory/dynamic/web.yml << 'WEBEOF'
-              all:
-                children:
-                  web_servers:
-                    hosts:
-              WEBEOF
+all:
+  children:
+    web_servers:
+      hosts:
+WEBEOF
               
               # Add IPs to hosts section
               echo "$WEB_IPS" | while read ip; do
@@ -153,9 +153,9 @@ stages:
               
               # Add vars section  
               cat >> inventory/dynamic/web.yml << 'WEBEOF'
-                    vars:
-                      ansible_user: azureuser
-              WEBEOF
+      vars:
+        ansible_user: azureuser
+WEBEOF
               
               echo "Web inventory created:"
               cat inventory/dynamic/web.yml
@@ -243,11 +243,11 @@ stages:
               mkdir -p inventory/dynamic
               
               cat > inventory/dynamic/worker.yml << 'WORKEREOF'
-              all:
-                children:
-                  worker_servers:
-                    hosts:
-              WORKEREOF
+all:
+  children:
+    worker_servers:
+      hosts:
+WORKEREOF
               
               # Add IPs to hosts section
               echo "$WORKER_IPS" | while read ip; do
@@ -256,9 +256,9 @@ stages:
               
               # Add vars section
               cat >> inventory/dynamic/worker.yml << 'WORKEREOF'
-                    vars:
-                      ansible_user: azureuser
-              WORKEREOF
+      vars:
+        ansible_user: azureuser
+WORKEREOF
               
               echo "Worker inventory created:"
               cat inventory/dynamic/worker.yml
