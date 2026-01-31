@@ -164,11 +164,11 @@ stages:
               
               # Setup SSH key
               mkdir -p ~/.ssh
-              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+              echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
               chmod 600 ~/.ssh/id_rsa
               
               # Write vault password
-              echo "$(VAULT_PASSWORD)" > vault_pass.txt
+              echo "$VAULT_PASSWORD" > vault_pass.txt
               
               # Deploy to web servers (only app role, skip postgres/redis)
               echo "Deploying Nautobot to web servers..."
@@ -259,11 +259,11 @@ stages:
               
               # Setup SSH key
               mkdir -p ~/.ssh
-              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+              echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
               chmod 600 ~/.ssh/id_rsa
               
               # Write vault password
-              echo "$(VAULT_PASSWORD)" > vault_pass.txt
+              echo "$VAULT_PASSWORD" > vault_pass.txt
               
               # Deploy to worker servers (only worker role, skip postgres/redis)
               echo "Deploying Nautobot to worker servers..."
