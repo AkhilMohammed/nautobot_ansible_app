@@ -128,6 +128,11 @@ stages:
               # Use the SSH key already on the EC2 agent
               SSH_KEY="/home/ubuntu/.ssh/azure-nautobot-key"
               
+              # Default Redis username for Azure Redis ACL
+              if [ -z "$REDIS_USERNAME" ]; then
+                REDIS_USERNAME="default"
+              fi
+
               # Base64-encode passwords to safely pass through SSH
               POSTGRESQL_PASSWORD_B64=$(printf '%s' "$POSTGRESQL_PASSWORD" | base64 -w0)
               REDIS_PASSWORD_B64=$(printf '%s' "$REDIS_PASSWORD" | base64 -w0)
@@ -147,11 +152,13 @@ stages:
                 POSTGRESQL_PASSWORD=$(printf '%s' '$POSTGRESQL_PASSWORD_B64' | base64 -d) && \
                 REDIS_PASSWORD=$(printf '%s' '$REDIS_PASSWORD_B64' | base64 -d) && \
                 export POSTGRESQL_PASSWORD REDIS_PASSWORD && \
+                REDIS_USERNAME="${REDIS_USERNAME}" && \
                 python3 - <<'PY' > /tmp/extra_vars.json && \
                 import json, os
                 print(json.dumps({
                     "postgresql_password": os.environ["POSTGRESQL_PASSWORD"],
                     "redis_password": os.environ["REDIS_PASSWORD"],
+                  "redis_username": os.environ.get("REDIS_USERNAME", "default"),
                 }))
                 PY
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
@@ -162,7 +169,6 @@ stages:
                   -e 'postgresql_user=nautobotadmin' \
                   -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
                   -e 'redis_port=6380' \
-                  -e 'redis_username=default' \
                   -e @/tmp/extra_vars.json \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
