@@ -536,6 +536,7 @@
   environment:
     NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
   become_user: "{{ nautobot_user }}"
+  when: "'nautobot_web' in group_names"
 
 - name: Collect static files
   ansible.builtin.command:
