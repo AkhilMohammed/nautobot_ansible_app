@@ -125,6 +125,8 @@ stages:
               
               # URL-encode Redis password for URL (handles special characters like @)
               REDIS_PASS_ENCODED=$(printf '%s' "$(REDIS_PASSWORD)" | jq -sRr @uri)
+              echo "DEBUG: Redis password length: ${#REDIS_PASS_ENCODED}"
+              echo "DEBUG: First 10 chars: ${REDIS_PASS_ENCODED:0:10}...${REDIS_PASS_ENCODED: -5}"
               
               # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
