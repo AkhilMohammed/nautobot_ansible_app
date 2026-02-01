@@ -153,6 +153,10 @@ stages:
 
               scp -i $SSH_KEY -o StrictHostKeyChecking=yes /tmp/extra_vars.json \
                 azureuser@${JUMPBOX_IP}:/tmp/extra_vars.json
+
+              # Copy SSH private key for internal VM access
+              scp -i $SSH_KEY -o StrictHostKeyChecking=yes /home/ubuntu/.ssh/azure-nautobot-key \
+                azureuser@${JUMPBOX_IP}:/home/azureuser/.ssh/azure-nautobot-key
               
               echo "DEBUG: Redis password length: ${#REDIS_PASSWORD}"
               
@@ -172,12 +176,14 @@ stages:
                 fi; \
                 export ANSIBLE_CONFIG=~/ansible.cfg; \
                 export ANSIBLE_ROLES_PATH=~/roles; \
+                chmod 600 /home/azureuser/.ssh/azure-nautobot-key; \
                 cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
                 chmod 600 /tmp/vault_pass.txt && \
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
                   --vault-password-file /tmp/vault_pass.txt \
                   -e deploy_env=dev \
+                  -e 'ansible_ssh_private_key_file=/home/azureuser/.ssh/azure-nautobot-key' \
                   -e 'postgresql_host=dev-nautobot-psql.postgres.database.azure.com' \
                   -e 'postgresql_database=nautobot' \
                   -e 'postgresql_user=psqladmin' \
