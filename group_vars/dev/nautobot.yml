@@ -23,12 +23,14 @@ systemd_path: "/etc/systemd/system"
 # Database Configuration
 nautobot_db:
   engine: "django.db.backends.postgresql"
-  name: "nautobot_dev"
-  user: "nautobot_dev"
-  password: "{{ vault_nautobot_db_password }}"
-  host: "localhost"  # or dev-postgres.internal
-  port: 5432
-  conn_max_age: 300
+  name: "{{ database_name | default('nautobot') }}"
+  user: "{{ database_user | default('nautobot') }}"
+  password: "{{ database_password | default(vault_nautobot_db_password) }}"
+  host: "{{ database_host | default('localhost') }}"
+  port: "{{ database_port | default(5432) }}"
+  conn_max_age: "{{ database_conn_max_age | default(300) }}"
+  options:
+    sslmode: "{{ database_ssl_mode | default('prefer') }}"
 
 # Redis Configuration
 nautobot_redis:

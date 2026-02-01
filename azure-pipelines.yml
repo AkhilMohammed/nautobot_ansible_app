@@ -134,7 +134,7 @@ stages:
               fi
 
               # Build extra vars JSON locally to avoid SSH quoting issues
-              python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default")}))' > /tmp/extra_vars.json
+              python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default"), "database_host": "dev-nautobot-psql.postgres.database.azure.com", "database_name": "nautobot", "database_user": "nautobotadmin", "database_password": os.environ["POSTGRESQL_PASSWORD"], "database_port": 5432, "database_ssl_mode": "require"}))' > /tmp/extra_vars.json
               
               # Update files on jump box (files already exist, just sync changes)
               scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
