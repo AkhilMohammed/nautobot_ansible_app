@@ -117,9 +117,13 @@ stages:
 
               # Refresh jump box host key to avoid MITM warnings
               JUMPBOX_IP="20.9.9.127"
-              KNOWN_HOSTS="/tmp/jumpbox_known_hosts"
-              rm -f "$KNOWN_HOSTS"
-              ssh-keyscan -t ed25519,ecdsa,rsa "$JUMPBOX_IP" > "$KNOWN_HOSTS"
+              KNOWN_HOSTS="/home/ubuntu/.ssh/known_hosts"
+              mkdir -p /home/ubuntu/.ssh
+              touch "$KNOWN_HOSTS"
+              chmod 600 "$KNOWN_HOSTS"
+              ssh-keygen -f "$KNOWN_HOSTS" -R "$JUMPBOX_IP" || true
+              ssh-keygen -f "$KNOWN_HOSTS" -R "[${JUMPBOX_IP}]:22" || true
+              ssh-keyscan -t ed25519,ecdsa,rsa "$JUMPBOX_IP" >> "$KNOWN_HOSTS"
               
               # Ensure required secrets are set
               if [ -z "$POSTGRESQL_PASSWORD" ]; then
@@ -143,21 +147,17 @@ stages:
               python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default"), "database_host": "dev-nautobot-psql.postgres.database.azure.com", "database_name": "nautobot", "database_user": "psqladmin", "database_password": os.environ["POSTGRESQL_PASSWORD"], "database_port": 5432, "database_ssl_mode": "require"}))' > /tmp/extra_vars.json
               
               # Update files on jump box (files already exist, just sync changes)
-              scp -i $SSH_KEY -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null -r \
+              scp -i $SSH_KEY -o StrictHostKeyChecking=yes -r \
                 playbooks roles group_vars inventory ansible.cfg \
                 azureuser@${JUMPBOX_IP}:~/ || echo "Files already on jump box"
 
-              scp -i $SSH_KEY -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null /tmp/extra_vars.json \
+              scp -i $SSH_KEY -o StrictHostKeyChecking=yes /tmp/extra_vars.json \
                 azureuser@${JUMPBOX_IP}:/tmp/extra_vars.json
               
               echo "DEBUG: Redis password length: ${#REDIS_PASSWORD}"
               
               # SSH to jump box and run deployment (pass variables directly)
-              ssh -i $SSH_KEY -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null \
-                azureuser@${JUMPBOX_IP} \
+              ssh -i $SSH_KEY -o StrictHostKeyChecking=yes azureuser@${JUMPBOX_IP} \
                 "set -e; \
                 if ! command -v ansible-playbook >/dev/null 2>&1; then \
                   python3 -m venv ~/.venv; \
