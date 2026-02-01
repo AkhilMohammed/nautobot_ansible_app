@@ -160,6 +160,8 @@ stages:
               ssh -i $SSH_KEY -o StrictHostKeyChecking=yes azureuser@${JUMPBOX_IP} \
                 "set -e; \
                 if ! command -v ansible-playbook >/dev/null 2>&1; then \
+                  sudo apt-get update -y; \
+                  sudo apt-get install -y python3-venv python3-pip; \
                   python3 -m venv ~/.venv; \
                   source ~/.venv/bin/activate; \
                   pip install --upgrade pip; \
