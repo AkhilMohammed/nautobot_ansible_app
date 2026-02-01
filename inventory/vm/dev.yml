@@ -5,7 +5,6 @@ all:
         dev-nautobot-web-01:
           ansible_host: 10.10.1.8
           ansible_user: azureuser
-          ansible_ssh_private_key_file: ~/.ssh/azure-nautobot-key
           deploy_env: dev
           deployment_type: vm
     nautobot_worker:
@@ -13,6 +12,5 @@ all:
         dev-nautobot-worker-01:
           ansible_host: 10.10.1.5
           ansible_user: azureuser
-          ansible_ssh_private_key_file: ~/.ssh/azure-nautobot-key
           deploy_env: dev
           deployment_type: vm
