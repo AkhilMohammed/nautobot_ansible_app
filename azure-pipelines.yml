@@ -149,18 +149,13 @@ stages:
                 "cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
                 chmod 600 /tmp/vault_pass.txt && \
-                POSTGRESQL_PASSWORD=$(printf '%s' '$POSTGRESQL_PASSWORD_B64' | base64 -d) && \
-                REDIS_PASSWORD=$(printf '%s' '$REDIS_PASSWORD_B64' | base64 -d) && \
-                export POSTGRESQL_PASSWORD REDIS_PASSWORD && \
-                REDIS_USERNAME="${REDIS_USERNAME}" && \
-                python3 - <<'PY' > /tmp/extra_vars.json && \
-                import json, os
-                print(json.dumps({
-                    "postgresql_password": os.environ["POSTGRESQL_PASSWORD"],
-                    "redis_password": os.environ["REDIS_PASSWORD"],
-                  "redis_username": os.environ.get("REDIS_USERNAME", "default"),
-                }))
-                PY
+                POSTGRESQL_PASSWORD_B64='${POSTGRESQL_PASSWORD_B64}' && \
+                REDIS_PASSWORD_B64='${REDIS_PASSWORD_B64}' && \
+                REDIS_USERNAME='${REDIS_USERNAME}' && \
+                POSTGRESQL_PASSWORD=$(printf '%s' "$POSTGRESQL_PASSWORD_B64" | tr -d '\n' | base64 -d) && \
+                REDIS_PASSWORD=$(printf '%s' "$REDIS_PASSWORD_B64" | tr -d '\n' | base64 -d) && \
+                export POSTGRESQL_PASSWORD REDIS_PASSWORD REDIS_USERNAME && \
+                python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default")}))' > /tmp/extra_vars.json && \
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
                   --vault-password-file /tmp/vault_pass.txt \
                   -e deploy_env=dev \
