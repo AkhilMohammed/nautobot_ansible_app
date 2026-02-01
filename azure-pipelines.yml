@@ -140,7 +140,7 @@ stages:
                   -e 'postgresql_password=$(POSTGRESQL_PASSWORD)' \
                   -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
                   -e 'redis_port=6380' \
-                  -e \"redis_password=\${REDIS_PASS_ENCODED}\" \
+                  -e redis_password=${REDIS_PASS_ENCODED} \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
                   --limit 'nautobot_web,nautobot_worker' \
