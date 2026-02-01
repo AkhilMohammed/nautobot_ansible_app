@@ -114,6 +114,12 @@ stages:
               set -e
               
               echo "Deploying Nautobot via jump box..."
+
+              # Refresh jump box host key to avoid MITM warnings
+              JUMPBOX_IP="20.9.9.127"
+              KNOWN_HOSTS="/tmp/jumpbox_known_hosts"
+              rm -f "$KNOWN_HOSTS"
+              ssh-keyscan -t ed25519,ecdsa,rsa "$JUMPBOX_IP" > "$KNOWN_HOSTS"
               
               # Ensure required secrets are set
               if [ -z "$POSTGRESQL_PASSWORD" ]; then
@@ -137,18 +143,32 @@ stages:
               python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default"), "database_host": "dev-nautobot-psql.postgres.database.azure.com", "database_name": "nautobot", "database_user": "psqladmin", "database_password": os.environ["POSTGRESQL_PASSWORD"], "database_port": 5432, "database_ssl_mode": "require"}))' > /tmp/extra_vars.json
               
               # Update files on jump box (files already exist, just sync changes)
-              scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
+              scp -i $SSH_KEY -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null -r \
                 playbooks roles group_vars inventory ansible.cfg \
-                azureuser@20.9.9.127:~/ || echo "Files already on jump box"
+                azureuser@${JUMPBOX_IP}:~/ || echo "Files already on jump box"
 
-              scp -i $SSH_KEY -o StrictHostKeyChecking=no /tmp/extra_vars.json \
-                azureuser@20.9.9.127:/tmp/extra_vars.json
+              scp -i $SSH_KEY -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null /tmp/extra_vars.json \
+                azureuser@${JUMPBOX_IP}:/tmp/extra_vars.json
               
               echo "DEBUG: Redis password length: ${#REDIS_PASSWORD}"
               
               # SSH to jump box and run deployment (pass variables directly)
-              ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
-                "cd ~/playbooks && \
+              ssh -i $SSH_KEY -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=$KNOWN_HOSTS -o GlobalKnownHostsFile=/dev/null \
+                azureuser@${JUMPBOX_IP} \
+                "set -e; \
+                if ! command -v ansible-playbook >/dev/null 2>&1; then \
+                  python3 -m venv ~/.venv; \
+                  source ~/.venv/bin/activate; \
+                  pip install --upgrade pip; \
+                  pip install ansible; \
+                  ansible-galaxy collection install community.docker kubernetes.core community.kubernetes; \
+                else \
+                  if [ -f ~/.venv/bin/activate ]; then source ~/.venv/bin/activate; fi; \
+                fi; \
+                cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
                 chmod 600 /tmp/vault_pass.txt && \
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
