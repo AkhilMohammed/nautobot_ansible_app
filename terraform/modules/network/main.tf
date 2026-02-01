@@ -139,7 +139,7 @@ resource "azurerm_network_security_rule" "app_allow_lb_http" {
   protocol                    = "Tcp"
   source_port_range           = "*"
   destination_port_range      = "80"
-  source_address_prefix       = "AzureLoadBalancer"
+  source_address_prefix       = "Internet"
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.app.name
@@ -148,6 +148,34 @@ resource "azurerm_network_security_rule" "app_allow_lb_http" {
 resource "azurerm_network_security_rule" "app_allow_lb_https" {
   name                        = "AllowLBHTTPS"
   priority                    = 110
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "443"
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.app.name
+}
+
+resource "azurerm_network_security_rule" "app_allow_lb_probe_http" {
+  name                        = "AllowLBProbeHTTP"
+  priority                    = 105
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "80"
+  source_address_prefix       = "AzureLoadBalancer"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.app.name
+}
+
+resource "azurerm_network_security_rule" "app_allow_lb_probe_https" {
+  name                        = "AllowLBProbeHTTPS"
+  priority                    = 115
   direction                   = "Inbound"
   access                      = "Allow"
   protocol                    = "Tcp"
