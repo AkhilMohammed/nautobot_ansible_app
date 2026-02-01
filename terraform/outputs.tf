@@ -20,6 +20,17 @@ output "app_subnet_id" {
   value       = module.network.app_subnet_id
 }
 
+# Jumpbox Outputs
+output "jumpbox_public_ip" {
+  description = "Jumpbox public IP"
+  value       = module.jumpbox.public_ip
+}
+
+output "jumpbox_private_ip" {
+  description = "Jumpbox private IP"
+  value       = module.jumpbox.private_ip
+}
+
 # PostgreSQL Outputs (Azure Managed)
 output "postgresql_server_name" {
   description = "PostgreSQL server name"

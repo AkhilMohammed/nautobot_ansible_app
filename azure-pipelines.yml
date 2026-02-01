@@ -116,7 +116,10 @@ stages:
               echo "Deploying Nautobot via jump box..."
 
               # Refresh jump box host key to avoid MITM warnings
-              JUMPBOX_IP="20.9.9.127"
+              if [ -z "$JUMPBOX_IP" ]; then
+                echo "ERROR: JUMPBOX_IP variable not set in variable group!"
+                exit 1
+              fi
               KNOWN_HOSTS="/home/ubuntu/.ssh/known_hosts"
               mkdir -p /home/ubuntu/.ssh
               touch "$KNOWN_HOSTS"
@@ -201,3 +204,4 @@ stages:
             env:
               POSTGRESQL_PASSWORD: $(POSTGRESQL_PASSWORD)
               REDIS_PASSWORD: $(REDIS_PASSWORD)
+              JUMPBOX_IP: $(JUMPBOX_IP)

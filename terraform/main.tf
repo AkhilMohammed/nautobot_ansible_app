@@ -67,6 +67,23 @@ module "network" {
   tags = local.common_tags
 }
 
+# Jumpbox for Ansible access
+module "jumpbox" {
+  source = "./modules/jumpbox"
+
+  project_name            = var.project_name
+  environment             = var.environment
+  location                = var.location
+  resource_group_name     = azurerm_resource_group.main.name
+  subnet_id               = module.network.app_subnet_id
+  network_security_group_id = module.network.nsg_app_id
+
+  admin_username = var.admin_username
+  ssh_public_key = var.ssh_public_key
+
+  tags = local.common_tags
+}
+
 # Azure Database for PostgreSQL (Managed Service)
 module "database" {
   source = "./modules/database"
