@@ -120,7 +120,7 @@ stages:
               
               # Update files on jump box (files already exist, just sync changes)
               scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
-                playbooks roles group_vars ansible.cfg \
+                playbooks roles group_vars inventory ansible.cfg \
                 azureuser@20.9.9.127:~/ || echo "Files already on jump box"
               
               # URL-encode passwords for Redis URL (handles special characters like @)
