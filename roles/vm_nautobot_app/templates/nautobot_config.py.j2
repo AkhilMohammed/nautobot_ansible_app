@@ -47,13 +47,19 @@ DATABASES = {
 # Redis Configuration
 # ===========================
 
-{% set redis_pw = nautobot_redis.password | default('', true) %}
+{% set redis_user = nautobot_redis.username | default(redis_username | default('', true), true) %}
+{% set redis_pw = nautobot_redis.password | default('', true) | trim | urlencode %}
+{% if redis_user or redis_pw %}
+{% set redis_auth = (redis_user ~ ':' if redis_user else ':') ~ redis_pw %}
+{% else %}
+{% set redis_auth = '' %}
+{% endif %}
 {% set redis_scheme = 'rediss' if nautobot_redis.ssl | default(false) else 'redis' %}
 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "{{ redis_scheme }}://{% if redis_pw %}:{{ redis_pw }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database | default(0) }}",
+        "LOCATION": "{{ redis_scheme }}://{% if redis_auth %}{{ redis_auth }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database | default(0) }}",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             {% if nautobot_redis.ssl | default(false) %}
@@ -67,8 +73,8 @@ CACHES = {
 # Celery Configuration
 # ===========================
 
-CELERY_BROKER_URL = "{{ redis_scheme }}://{% if redis_pw %}:{{ redis_pw }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database | default(0) }}"
-CELERY_RESULT_BACKEND = "{{ redis_scheme }}://{% if redis_pw %}:{{ redis_pw }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
+CELERY_BROKER_URL = "{{ redis_scheme }}://{% if redis_auth %}{{ redis_auth }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database | default(0) }}"
+CELERY_RESULT_BACKEND = "{{ redis_scheme }}://{% if redis_auth %}{{ redis_auth }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
 
 # ===========================
 # Plugin Configuration

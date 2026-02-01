@@ -115,34 +115,55 @@ stages:
               
               echo "Deploying Nautobot via jump box..."
               
+              # Ensure required secrets are set
+              if [ -z "$POSTGRESQL_PASSWORD" ]; then
+                echo "ERROR: POSTGRESQL_PASSWORD variable not set in variable group!"
+                exit 1
+              fi
+              if [ -z "$REDIS_PASSWORD" ]; then
+                echo "ERROR: REDIS_PASSWORD variable not set in variable group!"
+                exit 1
+              fi
+              
               # Use the SSH key already on the EC2 agent
               SSH_KEY="/home/ubuntu/.ssh/azure-nautobot-key"
+              
+              # Base64-encode passwords to safely pass through SSH
+              POSTGRESQL_PASSWORD_B64=$(printf '%s' "$POSTGRESQL_PASSWORD" | base64 -w0)
+              REDIS_PASSWORD_B64=$(printf '%s' "$REDIS_PASSWORD" | base64 -w0)
               
               # Update files on jump box (files already exist, just sync changes)
               scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
                 playbooks roles group_vars inventory ansible.cfg \
                 azureuser@20.9.9.127:~/ || echo "Files already on jump box"
               
-              # URL-encode Redis password for URL (handles special characters like @)
-              REDIS_PASS_ENCODED=$(printf '%s' "$(REDIS_PASSWORD)" | jq -sRr @uri)
-              echo "DEBUG: Redis password length: ${#REDIS_PASS_ENCODED}"
-              echo "DEBUG: First 10 chars: ${REDIS_PASS_ENCODED:0:10}...${REDIS_PASS_ENCODED: -5}"
+              echo "DEBUG: Redis password length: ${#REDIS_PASSWORD}"
               
               # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
                 "cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
                 chmod 600 /tmp/vault_pass.txt && \
+                POSTGRESQL_PASSWORD=$(printf '%s' '$POSTGRESQL_PASSWORD_B64' | base64 -d) && \
+                REDIS_PASSWORD=$(printf '%s' '$REDIS_PASSWORD_B64' | base64 -d) && \
+                export POSTGRESQL_PASSWORD REDIS_PASSWORD && \
+                python3 - <<'PY' > /tmp/extra_vars.json && \
+                import json, os
+                print(json.dumps({
+                    "postgresql_password": os.environ["POSTGRESQL_PASSWORD"],
+                    "redis_password": os.environ["REDIS_PASSWORD"],
+                }))
+                PY
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
                   --vault-password-file /tmp/vault_pass.txt \
                   -e deploy_env=dev \
                   -e 'postgresql_host=dev-nautobot-psql.postgres.database.azure.com' \
                   -e 'postgresql_database=nautobot' \
                   -e 'postgresql_user=nautobotadmin' \
-                  -e 'postgresql_password=$(POSTGRESQL_PASSWORD)' \
                   -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
                   -e 'redis_port=6380' \
-                  -e redis_password=${REDIS_PASS_ENCODED} \
+                  -e 'redis_username=default' \
+                  -e @/tmp/extra_vars.json \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
                   --limit 'nautobot_web,nautobot_worker' \
@@ -151,3 +172,6 @@ stages:
                 rm -f /tmp/vault_pass.txt && \
                 echo '✅ Deployment complete!'"
             displayName: 'Deploy via Jump Box'
+            env:
+              POSTGRESQL_PASSWORD: $(POSTGRESQL_PASSWORD)
+              REDIS_PASSWORD: $(REDIS_PASSWORD)
