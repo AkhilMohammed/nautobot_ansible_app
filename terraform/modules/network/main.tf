@@ -139,7 +139,7 @@ resource "azurerm_network_security_rule" "app_allow_lb_http" {
   protocol                    = "Tcp"
   source_port_range           = "*"
   destination_port_range      = "80"
-  source_address_prefix       = var.subnet_frontend
+  source_address_prefix       = "AzureLoadBalancer"
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.app.name
@@ -153,7 +153,7 @@ resource "azurerm_network_security_rule" "app_allow_lb_https" {
   protocol                    = "Tcp"
   source_port_range           = "*"
   destination_port_range      = "443"
-  source_address_prefix       = var.subnet_frontend
+  source_address_prefix       = "AzureLoadBalancer"
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.app.name
