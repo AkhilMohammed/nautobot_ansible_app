@@ -80,8 +80,11 @@ module "jumpbox" {
 
   admin_username = var.admin_username
   ssh_public_key = var.ssh_public_key
+  vm_size        = var.jumpbox_vm_size
 
   tags = local.common_tags
+
+  depends_on = [module.compute]
 }
 
 # Azure Database for PostgreSQL (Managed Service)

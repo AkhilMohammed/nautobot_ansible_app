@@ -158,6 +158,12 @@ variable "worker_vm_size" {
   default     = "Standard_D2s_v3"
 }
 
+variable "jumpbox_vm_size" {
+  description = "VM size for jumpbox"
+  type        = string
+  default     = "Standard_D2s_v3"
+}
+
 variable "scheduler_vm_count" {
   description = "Number of Nautobot scheduler VMs"
   type        = number

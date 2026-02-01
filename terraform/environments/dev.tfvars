@@ -26,9 +26,12 @@ lb_sku = "Standard"  # Changed from Basic to support availability zones
 
 # VM Configuration (2 vCPU VMs to fit within 4 vCPU quota: 2+2=4 vCPUs, no scheduler)
 web_vm_count       = 1
-web_vm_size        = "Standard_D2s_v3"  # 2 vCPU, 8GB RAM - available in centralus
-worker_vm_count    = 1
-worker_vm_size     = "Standard_D2s_v3"  # 2 vCPU, 8GB RAM - available in centralus
+web_vm_size        = "Standard_D2s_v3"  # 2 vCPU
+worker_vm_count    = 0
+worker_vm_size     = "Standard_D2s_v3"  # unused when count=0
+
+# Jumpbox Configuration (fits 4-core quota with single web VM)
+jumpbox_vm_size    = "Standard_D2s_v3"
 scheduler_vm_count = 1
 scheduler_vm_size  = "Standard_B1s"  # Not used, scheduler disabled
 
