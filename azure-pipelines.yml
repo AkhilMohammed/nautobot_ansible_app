@@ -170,6 +170,8 @@ stages:
                 else \
                   if [ -f ~/.venv/bin/activate ]; then source ~/.venv/bin/activate; fi; \
                 fi; \
+                export ANSIBLE_CONFIG=~/ansible.cfg; \
+                export ANSIBLE_ROLES_PATH=~/roles; \
                 cd ~/playbooks && \
                 echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
                 chmod 600 /tmp/vault_pass.txt && \
