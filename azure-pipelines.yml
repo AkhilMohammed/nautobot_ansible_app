@@ -152,8 +152,8 @@ stages:
                 POSTGRESQL_PASSWORD_B64='${POSTGRESQL_PASSWORD_B64}' && \
                 REDIS_PASSWORD_B64='${REDIS_PASSWORD_B64}' && \
                 REDIS_USERNAME='${REDIS_USERNAME}' && \
-                POSTGRESQL_PASSWORD=$(printf '%s' "$POSTGRESQL_PASSWORD_B64" | tr -d '\n' | base64 -d) && \
-                REDIS_PASSWORD=$(printf '%s' "$REDIS_PASSWORD_B64" | tr -d '\n' | base64 -d) && \
+                POSTGRESQL_PASSWORD=$(printf '%s' \"$POSTGRESQL_PASSWORD_B64\" | tr -d '\\n' | base64 -d) && \
+                REDIS_PASSWORD=$(printf '%s' \"$REDIS_PASSWORD_B64\" | tr -d '\\n' | base64 -d) && \
                 export POSTGRESQL_PASSWORD REDIS_PASSWORD REDIS_USERNAME && \
                 python3 -c 'import json,os; print(json.dumps({"postgresql_password": os.environ["POSTGRESQL_PASSWORD"], "redis_password": os.environ["REDIS_PASSWORD"], "redis_username": os.environ.get("REDIS_USERNAME","default")}))' > /tmp/extra_vars.json && \
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
