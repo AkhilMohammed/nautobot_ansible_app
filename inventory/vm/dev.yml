@@ -1,9 +1,16 @@
 all:
   children:
-    dev_vm:
+    nautobot_web:
       hosts:
-        dev-nautobot-01:
-          ansible_host: 172.17.228.202
-          ansible_user: admin1
+        dev-nautobot-web-01:
+          ansible_host: 10.10.1.8
+          ansible_user: nautobot
+          deploy_env: dev
+          deployment_type: vm
+    nautobot_worker:
+      hosts:
+        dev-nautobot-worker-01:
+          ansible_host: 10.10.1.5
+          ansible_user: nautobot
           deploy_env: dev
           deployment_type: vm

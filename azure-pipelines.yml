@@ -123,9 +123,8 @@ stages:
                 playbooks roles group_vars inventory ansible.cfg \
                 azureuser@20.9.9.127:~/ || echo "Files already on jump box"
               
-              # URL-encode passwords for Redis URL (handles special characters like @)
+              # URL-encode Redis password for URL (handles special characters like @)
               REDIS_PASS_ENCODED=$(printf '%s' "$(REDIS_PASSWORD)" | jq -sRr @uri)
-              PSQL_PASS_ESCAPED=$(printf '%s' "$(POSTGRESQL_PASSWORD)" | sed 's/"/\\"/g')
               
               # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=no azureuser@20.9.9.127 \
@@ -138,7 +137,7 @@ stages:
                   -e 'postgresql_host=dev-nautobot-psql.postgres.database.azure.com' \
                   -e 'postgresql_database=nautobot' \
                   -e 'postgresql_user=nautobotadmin' \
-                  -e 'postgresql_password=${PSQL_PASS_ESCAPED}' \
+                  -e 'postgresql_password=$(POSTGRESQL_PASSWORD)' \
                   -e 'redis_host=dev-nautobot-redis.redis.cache.windows.net' \
                   -e 'redis_port=6380' \
                   -e 'redis_password=${REDIS_PASS_ENCODED}' \
