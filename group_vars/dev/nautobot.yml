@@ -89,20 +89,20 @@ nautobot_pip_packages:
 # Your custom plugins installed from Git branches
 nautobot_git_packages:
   # Official NTC plugins from GitHub (develop branch)
-  - name: "git+https://{{ git_auth_url }}github.com/nautobot/nautobot-app-ssot.git@develop#egg=nautobot-ssot"
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-ssot.git@develop#egg=nautobot-ssot"
     version: "develop"
     module_name: "nautobot_ssot"
 
   # Meraki plugin (dev)
-  - name: "git+https://{{ git_auth_url }}github.com/nautobot/nautobot-plugin-meraki.git@develop#egg=nautobot-meraki"
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-plugin-meraki.git@develop#egg=nautobot-meraki"
     version: "develop"
     module_name: "nautobot_meraki"
   
-  - name: "git+https://{{ git_auth_url }}github.com/nautobot/nautobot-app-golden-config.git@develop#egg=nautobot-golden-config"
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-golden-config.git@develop#egg=nautobot-golden-config"
     version: "develop"
     module_name: "nautobot_golden_config"
   
-  - name: "git+https://{{ git_auth_url }}github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt"
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt"
     version: "develop"
     module_name: "nautobot_device_lifecycle_mgmt"
 

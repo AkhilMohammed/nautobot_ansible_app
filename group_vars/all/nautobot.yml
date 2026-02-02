@@ -34,6 +34,11 @@ git_auth_url: >-
         ''
       )
   }}
+git_auth_url_safe: >-
+  {{
+    (git_auth_url | default('') | string) in ['False', 'false', 'None', 'none']
+    | ternary('', git_auth_url | default('') | string)
+  }}
 
 # Base URL for Git repos
 git_base_url: "dev.azure.com/yourcompany"
