@@ -77,6 +77,17 @@
       until: api_check.status in [200, 302]
       tags: [verify]
 
+    - name: Ensure default admin user exists (dev)
+      ansible.builtin.command:
+        cmd: >-
+          /opt/nautobot/venv/bin/nautobot-server -c /opt/nautobot/nautobot_config.py
+          shell --command "from django.contrib.auth import get_user_model; User=get_user_model(); u,_=User.objects.get_or_create(username='admin'); u.is_staff=True; u.is_superuser=True; u.set_password('adminson'); u.save(); print('admin user updated')"
+      become: true
+      become_user: nautobot
+      no_log: true
+      when: inventory_hostname in groups['nautobot_web']
+      tags: [verify]
+
     - name: Show deployment result
       ansible.builtin.debug:
         msg:

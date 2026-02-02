@@ -86,14 +86,9 @@ nautobot_pip_packages:
     version: "12.21.0"  
 
 # Azure DevOps is used - runner job synced from Git repo
-# Your two custom plugins installed from Git branches
+# Your custom plugins installed from Git branches
 nautobot_git_packages:
-  # Plugin 1 - Your first custom plugin (dev branch)
-  - name: "git+https://github.com/AkhilMohammed/nautobot-golden-config.git@master#egg=nautobot-golden-config"
-    version: "develop"
-    module_name: "nautobot_golden_config"  # Python import name
-  
-  # Plugin 2 - Your second custom plugin (dev branch)
+  # Custom plugin (dev branch)
   - name: "git+https://github.com/AkhilMohammed/nautobot-plugin-device-tracker.git@master#egg=nautobot-plugin-example"
     version: "develop"
     module_name: "nautobot_plugin_example"
@@ -102,6 +97,11 @@ nautobot_git_packages:
   - name: "git+https://github.com/nautobot/nautobot-app-ssot.git@develop#egg=nautobot-ssot"
     version: "develop"
     module_name: "nautobot_ssot"
+
+  # Meraki plugin (dev)
+  - name: "git+https://github.com/nautobot/nautobot-plugin-meraki.git@develop#egg=nautobot-meraki"
+    version: "develop"
+    module_name: "nautobot_meraki"
   
   - name: "git+https://github.com/nautobot/nautobot-app-golden-config.git@develop#egg=nautobot-golden-config"
     version: "develop"
@@ -129,6 +129,10 @@ nautobot_plugins_config:
     enable_backup: true
     enable_compliance: true
     enable_intended: true
+
+  nautobot_meraki:
+    api_timeout: 30
+    verify_ssl: true
 
 # Celery worker configuration
 nautobot_celery_worker_count: 2

@@ -1,6 +1,94 @@
 # Nautobot Azure VM Deployment Guide
 ## NTC-Style Architecture with Terraform and Ansible
 
+---
+
+## ✅ Simple 10‑Step Deployment (Beginner Friendly)
+
+Follow these steps exactly; no prior Azure/Terraform knowledge needed.
+
+1. **Have these ready**
+   - Azure subscription
+   - Azure DevOps project with a pipeline connected to this repo
+   - Azure CLI + Terraform installed
+   - SSH key pair (public key string)
+
+2. **Login to Azure**
+   - Run: `az login`
+
+3. **Confirm Terraform backend file**
+   - Check: [terraform/backend-dev.hcl](terraform/backend-dev.hcl)
+
+4. **Set the VM sizing** (recommended minimal)
+   - Edit: [terraform/environments/dev.tfvars](terraform/environments/dev.tfvars)
+   - Ensure: 2 web + 1 worker + 1 jumpbox, all 1 vCPU
+
+5. **Provision infrastructure**
+   - From [terraform](terraform) folder, run:
+     - `terraform init -reconfigure -backend-config=backend-dev.hcl`
+     - `terraform apply -auto-approve -var-file=./environments/dev.tfvars -var='db_admin_password=YOUR_DB_PASSWORD' -var='ssh_public_key=YOUR_PUBLIC_KEY'`
+
+6. **Set pipeline secrets in Azure DevOps**
+   - Variable group: `nautobot-azure-secrets`
+   - Add:
+     - `POSTGRESQL_PASSWORD`
+     - `REDIS_PASSWORD`
+     - `VAULT_PASSWORD`
+     - `JUMPBOX_IP` (optional; fallback is used if empty)
+
+7. **Run the pipeline**
+   - Push any small change or re-run the latest pipeline.
+   - The pipeline file is: [azure-pipelines.yml](azure-pipelines.yml)
+
+8. **Open the app**
+   - Use the load balancer IP from Terraform outputs.
+   - Access: `https://<LOAD_BALANCER_IP>`
+
+9. **Create an admin user**
+   - SSH to the jumpbox, then to any web VM.
+   - Run: `/opt/nautobot/venv/bin/nautobot-server createsuperuser`
+
+10. **Login**
+   - Use the admin credentials you just created.
+
+---
+
+## 🔗 Connect to Individual VMs (Web/Worker)
+
+You **must** connect through the jumpbox (bastion). The web/worker VMs only have private IPs.
+
+### Option A: SSH from your machine (jumpbox → web)
+1. SSH to the jumpbox:
+   - `ssh -i <YOUR_KEY> azureuser@<JUMPBOX_PUBLIC_IP>`
+2. From the jumpbox, SSH to a web VM (private IP example):
+   - `ssh -i <YOUR_KEY> azureuser@10.10.1.6`
+
+### Option B: One command (proxy through jumpbox)
+- `ssh -i <YOUR_KEY> -J azureuser@<JUMPBOX_PUBLIC_IP> azureuser@10.10.1.6`
+
+### How to find the VM private IPs
+- Azure Portal → VM scale sets → `vmss-nautobot-web-dev` → Instances
+- Or run (from a machine with Azure CLI access):
+  - `az vmss nic list -g dev-nautobot-rg --vmss-name vmss-nautobot-web-dev --query "[].ipConfigurations[0].privateIPAddress" -o tsv`
+
+---
+
+## 👤 Add a Nautobot User (Admin)
+
+Once you are on a **web VM**, run:
+
+1. Create an interactive admin user:
+   - `/opt/nautobot/venv/bin/nautobot-server createsuperuser`
+
+2. Or reset the `admin` user password non‑interactive:
+   - `sudo -u nautobot bash -lc 'export NAUTOBOT_CONFIG=/opt/nautobot/nautobot_config.py; /opt/nautobot/venv/bin/nautobot-server shell -c "from django.contrib.auth import get_user_model; User=get_user_model(); u,_=User.objects.get_or_create(username=\"admin\"); u.is_staff=True; u.is_superuser=True; u.set_password(\"admin\"); u.save(); print(\"admin user updated\")"'`
+
+Notes:
+- This only needs to be done **once** (database is shared).
+- If the `nautobot` user does not exist, create the user by running the playbook again or check the app install path.
+
+---
+
 This guide provides complete instructions for deploying Nautobot on Azure VMs using Terraform for infrastructure provisioning and Ansible for application deployment, following Network to Code (NTC) best practices.
 
 ---
