@@ -36,8 +36,8 @@ git_auth_url: >-
   }}
 git_auth_url_safe: >-
   {{
-    (git_auth_url | default('') | string) in ['False', 'false', 'None', 'none']
-    | ternary('', git_auth_url | default('') | string)
+    ((git_auth_url | default('') | string) is search('@'))
+    | ternary(git_auth_url | default('') | string, '')
   }}
 
 # Base URL for Git repos
