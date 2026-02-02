@@ -118,7 +118,7 @@ stages:
               echo "Deploying Nautobot via jump box..."
 
               # Refresh jump box host key to avoid MITM warnings
-              if [ -z "$JUMPBOX_IP" ]; then
+              if [ -z "$JUMPBOX_IP" ] || [[ "$JUMPBOX_IP" == '$('* ]]; then
                 if [ -n "$JUMPBOX_IP_FALLBACK" ]; then
                   echo "WARNING: JUMPBOX_IP not set; using fallback ${JUMPBOX_IP_FALLBACK}"
                   JUMPBOX_IP="$JUMPBOX_IP_FALLBACK"
