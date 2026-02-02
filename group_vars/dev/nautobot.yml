@@ -93,11 +93,6 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_ssot"
 
-  # Meraki plugin (dev)
-  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-plugin-meraki.git@develop#egg=nautobot-meraki"
-    version: "develop"
-    module_name: "nautobot_meraki"
-  
   - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-golden-config.git@develop#egg=nautobot-golden-config"
     version: "develop"
     module_name: "nautobot_golden_config"
@@ -130,10 +125,6 @@ nautobot_plugins_config:
     enable_backup: true
     enable_compliance: true
     enable_intended: true
-
-  nautobot_meraki:
-    api_timeout: 30
-    verify_ssl: true
 
 # Celery worker configuration
 nautobot_celery_worker_count: 2
