@@ -510,13 +510,25 @@
   when: nautobot_pip_packages is defined
   tags: pip-packages
 
+- name: Filter git packages
+  ansible.builtin.set_fact:
+    nautobot_git_packages_filtered: >-
+      {{
+        (nautobot_git_packages | default([]))
+        | rejectattr('module_name', 'in', (nautobot_git_packages_blocklist | default([])))
+        | rejectattr('name', 'search', (nautobot_git_packages_blocklist_regex | default('^$')))
+        | list
+      }}
+  when: nautobot_git_packages is defined
+  tags: git-plugins
+
 - name: Install git packages
   ansible.builtin.pip:
     name: "{{ item.name }}"
     virtualenv: "{{ nautobot_venv }}"
     extra_args: --no-cache-dir
   become_user: "{{ nautobot_user }}"
-  loop: "{{ nautobot_git_packages | default([]) }}"
+  loop: "{{ nautobot_git_packages_filtered | default(nautobot_git_packages | default([])) }}"
   when: nautobot_git_packages is defined
   tags: git-plugins
 
