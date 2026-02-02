@@ -292,8 +292,8 @@ resource "azurerm_monitor_autoscale_setting" "web" {
     name = "AutoScale"
 
     capacity {
-      default = 1
-      minimum = 1
+      default = var.web_instance_count
+      minimum = var.web_instance_count
       maximum = var.web_max_instances
     }
 
@@ -409,8 +409,8 @@ resource "azurerm_monitor_autoscale_setting" "worker" {
     name = "AutoScale"
 
     capacity {
-      default = 1
-      minimum = 1
+      default = var.worker_instance_count
+      minimum = var.worker_instance_count
       maximum = var.worker_max_instances
     }
 
