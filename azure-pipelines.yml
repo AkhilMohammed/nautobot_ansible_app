@@ -174,24 +174,25 @@ stages:
               
               # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=yes azureuser@${JUMPBOX_IP} \
-                "set -e; \
-                if ! command -v ansible-playbook >/dev/null 2>&1; then \
-                  sudo apt-get update -y; \
-                  sudo apt-get install -y python3-venv python3-pip; \
-                  python3 -m venv ~/.venv; \
-                  source ~/.venv/bin/activate; \
-                  pip install --upgrade pip; \
-                  pip install ansible; \
-                  ansible-galaxy collection install community.docker kubernetes.core community.kubernetes; \
-                else \
-                  if [ -f ~/.venv/bin/activate ]; then source ~/.venv/bin/activate; fi; \
-                fi; \
-                export ANSIBLE_CONFIG=~/ansible.cfg; \
-                export ANSIBLE_ROLES_PATH=~/roles; \
-                chmod 600 /home/azureuser/.ssh/azure-nautobot-key; \
-                cd ~/playbooks && \
-                echo 'HCLtech@2025' > /tmp/vault_pass.txt && \
-                chmod 600 /tmp/vault_pass.txt && \
+                "DEPLOY_LIMIT_VALUE='${DEPLOY_LIMIT_VALUE}' bash -s" <<'REMOTE'
+                set -e
+                if ! command -v ansible-playbook >/dev/null 2>&1; then
+                  sudo apt-get update -y
+                  sudo apt-get install -y python3-venv python3-pip
+                  python3 -m venv ~/.venv
+                  source ~/.venv/bin/activate
+                  pip install --upgrade pip
+                  pip install ansible
+                  ansible-galaxy collection install community.docker kubernetes.core community.kubernetes
+                else
+                  if [ -f ~/.venv/bin/activate ]; then source ~/.venv/bin/activate; fi
+                fi
+                export ANSIBLE_CONFIG=~/ansible.cfg
+                export ANSIBLE_ROLES_PATH=~/roles
+                chmod 600 /home/azureuser/.ssh/azure-nautobot-key
+                cd ~/playbooks
+                echo 'HCLtech@2025' > /tmp/vault_pass.txt
+                chmod 600 /tmp/vault_pass.txt
                 ansible-playbook -i ../inventory/vm/dev.yml deploy_vm_all.yml \
                   --vault-password-file /tmp/vault_pass.txt \
                   -e deploy_env=dev \
@@ -206,9 +207,10 @@ stages:
                   -e 'use_managed_services=true' \
                   --limit "${DEPLOY_LIMIT_VALUE}" \
                   --skip-tags 'postgres,redis' \
-                  -vv && \
-                rm -f /tmp/vault_pass.txt && \
-                echo '✅ Deployment complete!'"
+                  -vv
+                rm -f /tmp/vault_pass.txt
+                echo '✅ Deployment complete!'
+REMOTE
             displayName: 'Deploy via Jump Box'
             env:
               POSTGRESQL_PASSWORD: $(POSTGRESQL_PASSWORD)
