@@ -570,6 +570,20 @@ sudo journalctl -u nautobot -f
 tail -f /opt/nautobot/logs/nautobot.log
 ```
 
+#### 5. Git plugin install fails (Meraki)
+
+Symptom:
+```
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/nautobot/nautobot-plugin-meraki.git/'
+```
+
+Fix:
+- Ensure the pipeline variable group includes `vault_git_username` and `vault_git_token`.
+- For public GitHub repos, set both to empty (prevents credential injection).
+- For private repos, set a GitHub PAT in `vault_git_token` (and any non-empty username).
+- Optional: set `vault_git_auth_enabled=true` only when you want credentials injected.
+
 ### Get Help
 
 ```bash
