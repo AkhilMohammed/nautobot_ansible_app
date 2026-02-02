@@ -9,6 +9,8 @@ pool:
 
 variables:
   - group: nautobot-azure-secrets
+  - name: JUMPBOX_IP_FALLBACK
+    value: "74.249.226.93"
 
 stages:
   - stage: Build
@@ -117,8 +119,13 @@ stages:
 
               # Refresh jump box host key to avoid MITM warnings
               if [ -z "$JUMPBOX_IP" ]; then
-                echo "ERROR: JUMPBOX_IP variable not set in variable group!"
-                exit 1
+                if [ -n "$JUMPBOX_IP_FALLBACK" ]; then
+                  echo "WARNING: JUMPBOX_IP not set; using fallback ${JUMPBOX_IP_FALLBACK}"
+                  JUMPBOX_IP="$JUMPBOX_IP_FALLBACK"
+                else
+                  echo "ERROR: JUMPBOX_IP variable not set in variable group!"
+                  exit 1
+                fi
               fi
               KNOWN_HOSTS="/home/ubuntu/.ssh/known_hosts"
               mkdir -p /home/ubuntu/.ssh
@@ -205,4 +212,5 @@ stages:
               POSTGRESQL_PASSWORD: $(POSTGRESQL_PASSWORD)
               REDIS_PASSWORD: $(REDIS_PASSWORD)
               JUMPBOX_IP: $(JUMPBOX_IP)
+              JUMPBOX_IP_FALLBACK: $(JUMPBOX_IP_FALLBACK)
               DEPLOY_LIMIT: $(DEPLOY_LIMIT)
