@@ -145,6 +145,9 @@ stages:
                 exit 1
               fi
               # Resolve deploy limit locally to avoid quoting issues
+              if [[ "$DEPLOY_LIMIT" == '$('* ]]; then
+                DEPLOY_LIMIT=""
+              fi
               DEPLOY_LIMIT_VALUE="${DEPLOY_LIMIT:-nautobot_web,nautobot_worker}"
               
               # Use the SSH key already on the EC2 agent
