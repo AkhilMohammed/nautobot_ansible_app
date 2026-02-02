@@ -144,6 +144,8 @@ stages:
                 echo "ERROR: REDIS_PASSWORD variable not set in variable group!"
                 exit 1
               fi
+              # Resolve deploy limit locally to avoid quoting issues
+              DEPLOY_LIMIT_VALUE="${DEPLOY_LIMIT:-nautobot_web,nautobot_worker}"
               
               # Use the SSH key already on the EC2 agent
               SSH_KEY="/home/ubuntu/.ssh/azure-nautobot-key"
@@ -202,7 +204,7 @@ stages:
                   -e @/tmp/extra_vars.json \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
-                  --limit "${DEPLOY_LIMIT:-nautobot_web,nautobot_worker}" \
+                  --limit "${DEPLOY_LIMIT_VALUE}" \
                   --skip-tags 'postgres,redis' \
                   -vv && \
                 rm -f /tmp/vault_pass.txt && \
