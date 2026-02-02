@@ -23,10 +23,10 @@ systemd_path: "/etc/systemd/system"
 # Git Authentication (will be overridden by vault in each env)
 git_username: "{{ vault_git_username }}"
 git_token: "{{ vault_git_token }}"
-git_auth_enabled: "{{ vault_git_auth_enabled | default(false) }}"
+git_auth_enabled: "{{ vault_git_auth_enabled | default(false) | bool }}"
 git_auth_url: >-
   {{
-    (git_auth_enabled | default(false)) and (git_token is defined and git_token | length > 0)
+    (git_auth_enabled and (git_token is defined and git_token | length > 0))
     | ternary(
         ((git_username is defined and git_username | length > 0)
           | ternary(git_username ~ ':' ~ git_token ~ '@', 'x-access-token:' ~ git_token ~ '@')
