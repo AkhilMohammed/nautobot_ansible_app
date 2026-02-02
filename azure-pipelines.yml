@@ -146,10 +146,6 @@ stages:
               fi
               # Resolve deploy limit locally to avoid quoting issues
               DEPLOY_LIMIT_VALUE="${DEPLOY_LIMIT:-nautobot_web,nautobot_worker}"
-              LIMIT_ARG=""
-              if [ -n "$DEPLOY_LIMIT_VALUE" ]; then
-                LIMIT_ARG="--limit ${DEPLOY_LIMIT_VALUE}"
-              fi
               
               # Use the SSH key already on the EC2 agent
               SSH_KEY="/home/ubuntu/.ssh/azure-nautobot-key"
@@ -179,6 +175,8 @@ stages:
               # SSH to jump box and run deployment (pass variables directly)
               ssh -i $SSH_KEY -o StrictHostKeyChecking=yes azureuser@${JUMPBOX_IP} \
                 "set -e; \
+                LIMIT_OPT=''; \
+                if [ -n '${DEPLOY_LIMIT_VALUE}' ]; then LIMIT_OPT=\"--limit ${DEPLOY_LIMIT_VALUE}\"; fi; \
                 if ! command -v ansible-playbook >/dev/null 2>&1; then \
                   sudo apt-get update -y; \
                   sudo apt-get install -y python3-venv python3-pip; \
@@ -208,7 +206,7 @@ stages:
                   -e @/tmp/extra_vars.json \
                   -e 'redis_ssl=true' \
                   -e 'use_managed_services=true' \
-                  ${LIMIT_ARG} \
+                  \${LIMIT_OPT} \
                   --skip-tags 'postgres,redis' \
                   -vv && \
                 rm -f /tmp/vault_pass.txt && \
