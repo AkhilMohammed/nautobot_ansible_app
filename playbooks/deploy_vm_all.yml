@@ -102,5 +102,5 @@
           - "✅ HTTP redirect status: {{ http_redirect.status }}"
           - "✅ HTTPS status: {{ api_check.status }}"
           - "🌐 Access: https://{{ ansible_host }}/ (accept cert warning)"
-            - "🔐 Superuser: {{ nautobot_admin_username | default('admin') }}"
+          - "🔐 Superuser: {{ nautobot_admin_username | default('admin') }}"
       when: api_check.status in [200, 302]
