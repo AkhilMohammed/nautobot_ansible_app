@@ -69,6 +69,11 @@ nautobot_allowed_hosts: >-
 # SECRET KEY (dev only - use vault in prod)
 nautobot_secret_key: "dev-secret-key-change-in-production"
 
+# Admin user (dev defaults; override via vault in prod)
+nautobot_admin_username: "{{ vault_nautobot_admin_username | default('admin') }}"
+nautobot_admin_password: "{{ vault_nautobot_admin_password | default('admin') }}"
+nautobot_admin_email: "{{ vault_nautobot_admin_email | default('admin@example.com') }}"
+
 # ===========================
 # PLUGINS INSTALLATION
 # ===========================
