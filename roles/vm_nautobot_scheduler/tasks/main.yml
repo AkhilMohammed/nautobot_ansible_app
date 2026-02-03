@@ -15,8 +15,8 @@
       Group={{ nautobot_group }}
       WorkingDirectory={{ nautobot_root }}
       Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
-      ExecStart={{ nautobot_venv }}/bin/celery --app nautobot.core.celery beat \
-                --loglevel {{ nautobot_log_level }}
+      ExecStart={{ nautobot_venv }}/bin/nautobot-server celery beat \
+            --loglevel {{ nautobot_log_level }}
       Restart=on-failure
       RestartSec=30s
 
