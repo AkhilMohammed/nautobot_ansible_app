@@ -61,6 +61,18 @@ DATABASES = {
 {% else %}
 {% set redis_ssl_query = '' %}
 {% endif %}
+{% set celery_broker_url_base = nautobot_celery_broker_url | default(redis_scheme ~ '://' ~ (redis_auth ~ '@' if redis_auth else '') ~ nautobot_redis.host ~ ':' ~ nautobot_redis.port ~ '/' ~ (nautobot_redis.database | default(0))) %}
+{% set celery_result_backend_base = nautobot_celery_result_backend | default(redis_scheme ~ '://' ~ (redis_auth ~ '@' if redis_auth else '') ~ nautobot_redis.host ~ ':' ~ nautobot_redis.port ~ '/1') %}
+{% if nautobot_redis.ssl | default(false) and 'ssl_cert_reqs=' not in celery_broker_url_base %}
+{% set celery_broker_url = celery_broker_url_base ~ redis_ssl_query %}
+{% else %}
+{% set celery_broker_url = celery_broker_url_base %}
+{% endif %}
+{% if nautobot_redis.ssl | default(false) and 'ssl_cert_reqs=' not in celery_result_backend_base %}
+{% set celery_result_backend = celery_result_backend_base ~ redis_ssl_query %}
+{% else %}
+{% set celery_result_backend = celery_result_backend_base %}
+{% endif %}
 
 CACHES = {
     "default": {
@@ -79,8 +91,8 @@ CACHES = {
 # Celery Configuration
 # ===========================
 
-CELERY_BROKER_URL = "{{ redis_scheme }}://{% if redis_auth %}{{ redis_auth }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database | default(0) }}{{ redis_ssl_query }}"
-CELERY_RESULT_BACKEND = "{{ redis_scheme }}://{% if redis_auth %}{{ redis_auth }}@{% endif %}{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1{{ redis_ssl_query }}"
+CELERY_BROKER_URL = "{{ celery_broker_url }}"
+CELERY_RESULT_BACKEND = "{{ celery_result_backend }}"
 
 # ===========================
 # Plugin Configuration

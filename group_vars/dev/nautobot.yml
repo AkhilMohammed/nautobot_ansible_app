@@ -90,6 +90,10 @@ nautobot_pip_packages:
   - name: "azure-storage-blob"
     version: "12.21.0"  
 
+  # Runtime dependencies for Nautobot worker
+  - name: "django-jinja"
+  - name: "psycopg2-binary"
+
 # Azure DevOps is used - runner job synced from Git repo
 # Your custom plugins installed from Git branches
 nautobot_git_packages:
