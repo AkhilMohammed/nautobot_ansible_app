@@ -32,3 +32,27 @@
     enabled: yes
     state: started
     daemon_reload: yes
+
+- name: Check nautobot-worker service status
+  ansible.builtin.command:
+    cmd: systemctl is-active nautobot-worker
+  register: nautobot_worker_active
+  changed_when: false
+  failed_when: false
+
+- name: Collect nautobot-worker logs on failure
+  ansible.builtin.command:
+    cmd: journalctl -u nautobot-worker -n 200 --no-pager
+  register: nautobot_worker_logs
+  changed_when: false
+  when: nautobot_worker_active.stdout is defined and nautobot_worker_active.stdout != "active"
+
+- name: Show nautobot-worker logs
+  ansible.builtin.debug:
+    msg: "{{ nautobot_worker_logs.stdout }}"
+  when: nautobot_worker_logs is defined
+
+- name: Fail if nautobot-worker is not active
+  ansible.builtin.fail:
+    msg: "nautobot-worker is not active. See logs above."
+  when: nautobot_worker_active.stdout is defined and nautobot_worker_active.stdout != "active"
