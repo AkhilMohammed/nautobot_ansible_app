@@ -77,15 +77,22 @@
       until: api_check.status in [200, 302]
       tags: [verify]
 
-    - name: Ensure default admin user exists (dev)
+    - name: Ensure Nautobot admin user exists
       ansible.builtin.command:
         cmd: >-
-          /opt/nautobot/venv/bin/nautobot-server -c /opt/nautobot/nautobot_config.py
-          shell --command "from django.contrib.auth import get_user_model; User=get_user_model(); u,_=User.objects.get_or_create(username='admin'); u.is_staff=True; u.is_superuser=True; u.set_password('adminson'); u.save(); print('admin user updated')"
+          {{ nautobot_venv }}/bin/nautobot-server shell -c
+          "from django.contrib.auth import get_user_model; User=get_user_model();
+          user, _ = User.objects.get_or_create(username='{{ nautobot_admin_username | default('admin') }}',
+          defaults={'email': '{{ nautobot_admin_email | default('admin@example.com') }}'});
+          user.email='{{ nautobot_admin_email | default('admin@example.com') }}';
+          user.is_staff=True; user.is_superuser=True; user.is_active=True;
+          user.set_password('{{ nautobot_admin_password | default('admin') }}'); user.save()"
+      environment:
+        NAUTOBOT_CONFIG: "{{ nautobot_config_path }}"
       become: true
-      become_user: nautobot
+      become_user: "{{ nautobot_user | default('nautobot') }}"
       no_log: true
-      when: inventory_hostname in groups['nautobot_web']
+      when: "'nautobot_web' in group_names"
       tags: [verify]
 
     - name: Show deployment result
@@ -95,5 +102,5 @@
           - "✅ HTTP redirect status: {{ http_redirect.status }}"
           - "✅ HTTPS status: {{ api_check.status }}"
           - "🌐 Access: https://{{ ansible_host }}/ (accept cert warning)"
-          - "🔐 Superuser: Run './venv/bin/nautobot-server createsuperuser'"
+            - "🔐 Superuser: {{ nautobot_admin_username | default('admin') }}"
       when: api_check.status in [200, 302]
