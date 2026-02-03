@@ -49,8 +49,10 @@
 
 - name: Show nautobot-worker logs
   ansible.builtin.debug:
-    msg: "{{ nautobot_worker_logs.stdout }}"
-  when: nautobot_worker_logs is defined
+    msg: "{{ nautobot_worker_logs.stdout | default('') }}"
+  when:
+    - nautobot_worker_logs is defined
+    - nautobot_worker_logs.stdout is defined
 
 - name: Fail if nautobot-worker is not active
   ansible.builtin.fail:
