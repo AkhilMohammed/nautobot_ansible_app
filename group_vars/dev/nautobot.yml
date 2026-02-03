@@ -101,6 +101,11 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_device_lifecycle_mgmt"
 
+  # DNS Models plugin (dev)
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-dns-models.git@develop#egg=nautobot-dns-models"
+    version: "develop"
+    module_name: "nautobot_dns_models"
+
 # Blocklist legacy/incompatible plugins that may be injected via vault
 nautobot_git_packages_blocklist:
   - "nautobot_plugin_example"
@@ -125,6 +130,8 @@ nautobot_plugins_config:
     enable_backup: true
     enable_compliance: true
     enable_intended: true
+
+  nautobot_dns_models: {}
 
 # Celery worker configuration
 nautobot_celery_worker_count: 2
