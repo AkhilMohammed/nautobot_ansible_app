@@ -80,7 +80,7 @@
     - name: Ensure Nautobot admin user exists
       ansible.builtin.command:
         cmd: >-
-          {{ nautobot_venv }}/bin/nautobot-server shell -c
+          {{ nautobot_venv }}/bin/nautobot-server --config-path {{ nautobot_config_path }} shell -c
           "from django.contrib.auth import get_user_model; User=get_user_model();
           user, _ = User.objects.get_or_create(username='{{ nautobot_admin_username | default('admin') }}',
           defaults={'email': '{{ nautobot_admin_email | default('admin@example.com') }}'});
