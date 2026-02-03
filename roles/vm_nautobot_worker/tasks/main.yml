@@ -15,7 +15,7 @@
       Group={{ nautobot_group }}
       WorkingDirectory={{ nautobot_root }}
       Environment="NAUTOBOT_CONFIG={{ nautobot_config_path }}"
-      ExecStart={{ nautobot_venv }}/bin/nautobot-server --config-path {{ nautobot_config_path }} celery worker \
+      ExecStart={{ nautobot_venv }}/bin/nautobot-server --config {{ nautobot_config_path }} celery worker \
             --loglevel {{ nautobot_log_level }} \
             --concurrency {{ nautobot_celery_worker_count }} \
             --autoscale={{ nautobot_celery_worker_autoscale }}
