@@ -41,8 +41,8 @@ nautobot_redis:
   ssl: "{{ redis_ssl | default(false) }}"
 
 # Celery Configuration
-nautobot_celery_broker_url: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database }}"
-nautobot_celery_result_backend: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
+nautobot_celery_broker_url: "{{ 'rediss' if redis_ssl | default(false) else 'redis' }}://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database }}"
+nautobot_celery_result_backend: "{{ 'rediss' if redis_ssl | default(false) else 'redis' }}://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
 
 # Allowed Hosts
 # nautobot_allowed_hosts:

@@ -35,9 +35,11 @@
 
     - role: vm_nautobot_worker
       tags: [nautobot, worker]
+      when: "'nautobot_worker' in group_names"
 
     - role: vm_nautobot_scheduler
       tags: [nautobot, scheduler]
+      when: "'nautobot_worker' in group_names"
 
   post_tasks:
     - name: Ensure Nautobot services are running
