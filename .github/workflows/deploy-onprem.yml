@@ -133,7 +133,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          python3 -m pip install --user ansible
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible
 
       - name: Validate VM playbook
         run: |
@@ -169,7 +170,8 @@ jobs:
 
       - name: Install Ansible and dependencies
         run: |
-          python3 -m pip install --user ansible kubernetes
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible python3-kubernetes
 
       - name: Auto-Deploy K8s with Config/Plugin Changes
         env:
@@ -219,7 +221,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          python3 -m pip install --user ansible
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible
 
       - name: Auto-Deploy VM with Config/Plugin Changes
         env:
@@ -267,7 +270,8 @@ jobs:
 
       - name: Install Ansible and dependencies
         run: |
-          python3 -m pip install --user ansible kubernetes
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible python3-kubernetes
 
       - name: Deploy Full Production K8s Stack
         env:
@@ -296,7 +300,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          python3 -m pip install --user ansible
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible
 
       - name: Deploy PostgreSQL and Redis
         env:
@@ -329,7 +334,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          python3 -m pip install --user ansible
+          sudo apt-get update -qq
+          sudo apt-get install -y ansible
 
       - name: Deploy Nautobot Application
         env:
