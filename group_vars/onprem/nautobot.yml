@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Retry: Per-worker time sync before join + API health check
+#Retry: Force worker re-join if not registered in cluster
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
