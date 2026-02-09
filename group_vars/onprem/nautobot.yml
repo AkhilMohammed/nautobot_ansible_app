@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Retry: Added forced time synchronization to fix clock skew APT errors
+#Retry: Using ntpdate for aggressive time sync fix
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
