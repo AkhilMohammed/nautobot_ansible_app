@@ -126,14 +126,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          python3 -m pip install --user ansible
 
       - name: Validate VM playbook
         run: |
@@ -162,14 +162,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible and dependencies
         run: |
-          pip install ansible kubernetes
+          python3 -m pip install --user ansible kubernetes
 
       - name: Auto-Deploy K8s with Config/Plugin Changes
         env:
@@ -212,14 +212,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          python3 -m pip install --user ansible
 
       - name: Auto-Deploy VM with Config/Plugin Changes
         env:
@@ -260,14 +260,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible and dependencies
         run: |
-          pip install ansible kubernetes
+          python3 -m pip install --user ansible kubernetes
 
       - name: Deploy Full Production K8s Stack
         env:
@@ -289,14 +289,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          python3 -m pip install --user ansible
 
       - name: Deploy PostgreSQL and Redis
         env:
@@ -322,14 +322,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          python3 -m pip install --user ansible
 
       - name: Deploy Nautobot Application
         env:
