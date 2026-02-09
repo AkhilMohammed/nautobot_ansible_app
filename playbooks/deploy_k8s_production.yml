@@ -410,14 +410,39 @@
       ansible.builtin.debug:
         msg: "Worker node time status: {{ worker_time_status.stdout_lines }}"
 
-    - name: Check if node is already part of cluster
+    - name: Check if node is registered in Kubernetes cluster
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o name
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: node_registered
+      failed_when: false
+      changed_when: false
+
+    - name: Display node registration status
+      ansible.builtin.debug:
+        msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if node_registered.rc == 0 else 'not registered' }}"
+
+    - name: Remove stale kubelet config if node not registered
+      ansible.builtin.file:
+        path: /etc/kubernetes/kubelet.conf
+        state: absent
+      when: node_registered.rc != 0
+
+    - name: Check if kubelet.conf exists after cleanup
       ansible.builtin.stat:
         path: /etc/kubernetes/kubelet.conf
-      register: node_joined
+      register: kubelet_conf_exists
 
     - name: Join worker node to cluster
       ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
-      when: not node_joined.stat.exists
+      when: not kubelet_conf_exists.stat.exists
+      register: join_result
+
+    - name: Display join result
+      ansible.builtin.debug:
+        msg: "{{ join_result.stdout_lines if join_result is defined and join_result.stdout_lines is defined else 'Node already joined' }}"
 
     - name: Wait for node to be ready
       pause:
@@ -454,7 +479,22 @@
       ansible.builtin.debug:
         msg: "{{ cluster_info.stdout_lines }}"
 
-    - name: Wait for all nodes to be ready
+    - name: Wait for all worker nodes to be registered
+      ansible.builtin.command: kubectl get nodes -o name
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: registered_nodes
+      until: |
+        registered_nodes.stdout_lines | length >= 5
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Display registered nodes
+      ansible.builtin.debug:
+        msg: "Registered nodes: {{ registered_nodes.stdout_lines }}"
+
+    - name: Wait for all nodes to be Ready
       ansible.builtin.command: kubectl get nodes
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
@@ -464,21 +504,43 @@
       delay: 10
       changed_when: false
 
+    - name: Display nodes status
+      ansible.builtin.debug:
+        msg: "{{ nodes_status.stdout_lines }}"
+
     - name: Label web worker nodes
       ansible.builtin.command: >
         kubectl label nodes {{ item }} workload=web --overwrite
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       loop:
         - onprem-k8s-web-01
         - onprem-k8s-web-02
-      ignore_errors: yes
+      register: web_label_result
+      failed_when: false
+
+    - name: Display web node labeling results
+      ansible.builtin.debug:
+        msg: "Web node {{ item.item }}: {{ 'labeled' if item.rc == 0 else 'failed - ' + item.stderr }}"
+      loop: "{{ web_label_result.results }}"
+      when: web_label_result is defined
 
     - name: Label celery worker nodes
       ansible.builtin.command: >
         kubectl label nodes {{ item }} workload=worker --overwrite
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       loop:
         - onprem-k8s-worker-01
         - onprem-k8s-worker-02
-      ignore_errors: yes
+      register: worker_label_result
+      failed_when: false
+
+    - name: Display worker node labeling results
+      ansible.builtin.debug:
+        msg: "Worker node {{ item.item }}: {{ 'labeled' if item.rc == 0 else 'failed - ' + item.stderr }}"
+      loop: "{{ worker_label_result.results }}"
+      when: worker_label_result is defined
 
 - name: Install Helm on master node
   hosts: k8s_control_plane
@@ -529,9 +591,23 @@
 
     - name: Check if Nginx Ingress is installed
       ansible.builtin.command: helm list -n ingress-nginx
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       register: ingress_installed
       changed_when: false
       failed_when: false
+
+    - name: Verify cluster has at least 5 nodes before installing Ingress
+      ansible.builtin.command: kubectl get nodes --no-headers
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: cluster_nodes
+      failed_when: cluster_nodes.stdout_lines | length < 5
+      changed_when: false
+
+    - name: Display cluster nodes count
+      ansible.builtin.debug:
+        msg: "Cluster has {{ cluster_nodes.stdout_lines | length }} nodes ready for Ingress installation"
 
     - name: Install Nginx Ingress Controller
       ansible.builtin.command: >
@@ -546,15 +622,46 @@
         --set controller.nodeSelector."node-role\.kubernetes\.io/control-plane"=""
         --set controller.tolerations[0].key=node-role.kubernetes.io/control-plane
         --set controller.tolerations[0].effect=NoSchedule
+        --timeout=10m
+        --wait
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: "'ingress-nginx' not in ingress_installed.stdout"
+      register: ingress_install_result
+      failed_when: false
 
-    - name: Wait for Ingress Controller to be ready
+    - name: Display Ingress installation result
+      ansible.builtin.debug:
+        msg: "{{ ingress_install_result.stdout_lines if ingress_install_result.stdout_lines is defined else 'Already installed' }}"
+
+    - name: Check Ingress Controller pods if installation seemed to fail
+      ansible.builtin.command: kubectl get pods -n ingress-nginx
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: ingress_pods
+      changed_when: false
+      when: ingress_install_result is defined and ingress_install_result.rc != 0
+
+    - name: Display Ingress pods status
+      ansible.builtin.debug:
+        msg: "{{ ingress_pods.stdout_lines }}"
+      when: ingress_pods is defined and ingress_pods.stdout_lines is defined
+
+    - name: Wait for Ingress Controller pods to be ready
       ansible.builtin.command: >
         kubectl wait --namespace ingress-nginx
         --for=condition=ready pod
         --selector=app.kubernetes.io/component=controller
         --timeout=300s
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: ingress_wait_result
+      failed_when: false
       changed_when: false
+
+    - name: Display Ingress readiness status
+      ansible.builtin.debug:
+        msg: "Ingress Controller {{ 'is ready' if ingress_wait_result.rc == 0 else 'may not be fully ready - check pods status' }}"
 
 - name: Deploy PostgreSQL and Redis on VMs
   hosts: postgres,redis
