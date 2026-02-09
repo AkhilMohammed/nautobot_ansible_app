@@ -226,7 +226,6 @@
         delay: 5
         timeout: 120
         state: started
-      when: not k8s_initialized.stat.exists
 
     - name: Wait for kubectl to be responsive
       ansible.builtin.command: kubectl cluster-info
@@ -237,7 +236,16 @@
       until: cluster_info.rc == 0
       retries: 12
       delay: 10
-      when: not k8s_initialized.stat.exists
+      changed_when: false
+
+    - name: Check if Flannel CNI is installed
+      ansible.builtin.command: kubectl get daemonset kube-flannel-ds -n kube-flannel
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_check
+      failed_when: false
+      changed_when: false
 
     - name: Install Flannel CNI network plugin
       ansible.builtin.command: >
@@ -245,14 +253,16 @@
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: not k8s_initialized.stat.exists
+      when: flannel_check.rc != 0
 
-    - name: Wait for control plane to be ready
-      ansible.builtin.command: kubectl get nodes
+    - name: Wait for master node to be Ready
+      ansible.builtin.command: kubectl get nodes onprem-k8s-master -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
       become_user: "{{ ansible_user }}"
-      register: nodes_status
-      until: nodes_status.rc == 0
-      retries: 10
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: master_ready
+      until: master_ready.stdout == "True"
+      retries: 30
       delay: 10
       changed_when: false
 
