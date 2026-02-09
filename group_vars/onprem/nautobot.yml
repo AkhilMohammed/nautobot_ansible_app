@@ -1,6 +1,6 @@
 ---
-# On-Premises Environment Configuration
-#Retry: Force worker re-join if not registered in cluster
+# On-Premises Environment Configuration  
+#Trigger: Force worker re-join if not registered in cluster - retest
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
