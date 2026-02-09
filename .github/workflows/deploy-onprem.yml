@@ -118,10 +118,52 @@ jobs:
           echo "  Config Changed: ${{ steps.detect.outputs.config_changed }}"
           echo "  Plugins Changed: ${{ steps.detect.outputs.plugins_changed }}"
 
+  ensure_ssh_access:
+    name: Ensure SSH Access to VMs
+    runs-on: [self-hosted, onprem]
+    needs: detect-changes
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Copy CI SSH keys if they exist in repo
+          if [ -f "group_vars/dev/ansible-ci" ]; then
+            cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci
+            chmod 600 ~/.ssh/ansible-ci
+          fi
+          
+          if [ -f "group_vars/dev/ansible-ci.pub" ]; then
+            cp group_vars/dev/ansible-ci.pub ~/.ssh/ansible-ci.pub
+            chmod 644 ~/.ssh/ansible-ci.pub
+          fi
+          
+          # Verify key exists
+          if [ ! -f ~/.ssh/ansible-ci ]; then
+            echo "⚠️  SSH key not found, generating new one..."
+            ssh-keygen -t ed25519 -f ~/.ssh/ansible-ci -N "" -C "ansible-ci-auto"
+          fi
+          
+          echo "✅ SSH key ready: $(ssh-keygen -l -f ~/.ssh/ansible-ci)"
+
+      - name: Deploy SSH Keys Automatically
+        run: |
+          echo "🔐 Deploying SSH keys to all target VMs..."
+          chmod +x scripts/deploy_ssh_keys_auto.sh scripts/deploy_key_expect.exp
+          bash scripts/deploy_ssh_keys_auto.sh || true
+          
+          echo ""
+          echo "📋 SSH key deployment complete."
+          echo "Proceeding with deployment..."
+
   validate:
     name: Validate Ansible Syntax
     runs-on: [self-hosted, onprem]
-    needs: detect-changes
+    needs: ensure_ssh_access
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -134,6 +176,11 @@ jobs:
       - name: Install Ansible
         run: |
           python3 -m pip install --user --break-system-packages ansible
+          
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
 
       - name: Validate VM playbook
         run: |
@@ -166,6 +213,11 @@ jobs:
 #         uses: actions/setup-python@v5
 #         with:
 #           python-version: '3.12'
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
 
       - name: Install Ansible and dependencies
         run: |
@@ -217,6 +269,11 @@ jobs:
 #         with:
 #           python-version: '3.12'
 
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
+
       - name: Install Ansible
         run: |
           python3 -m pip install --user --break-system-packages ansible
@@ -265,6 +322,11 @@ jobs:
 #         with:
 #           python-version: '3.12'
 
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
+
       - name: Install Ansible and dependencies
         run: |
           python3 -m pip install --user --break-system-packages ansible kubernetes
@@ -293,6 +355,11 @@ jobs:
 #         uses: actions/setup-python@v5
 #         with:
 #           python-version: '3.12'
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
 
       - name: Install Ansible
         run: |
@@ -326,6 +393,11 @@ jobs:
 #         uses: actions/setup-python@v5
 #         with:
 #           python-version: '3.12'
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          [ -f "group_vars/dev/ansible-ci" ] && cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci && chmod 600 ~/.ssh/ansible-ci || true
 
       - name: Install Ansible
         run: |

@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+# Automated SSH Key Distribution using expect
+# This script handles password prompts automatically for initial key deployment
+
+set timeout 30
+set ssh_pass [lindex $argv 0]
+set vm_ip [lindex $argv 1]
+set pubkey [lindex $argv 2]
+
+if {$argc != 3} {
+    puts "Usage: $argv0 <password> <vm_ip> <public_key>"
+    exit 1
+}
+
+# Deploy public key to VM
+spawn ssh -o StrictHostKeyChecking=no ubuntu@$vm_ip "mkdir -p  ~/.ssh && chmod 700 ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'KEY_DEPLOYED'"
+
+expect {
+    "password:" {
+        send "$ssh_pass\r"
+        exp_continue
+    }
+    "KEY_DEPLOYED" {
+        puts "\n✅ Successfully deployed key to $vm_ip"
+        exit 0
+    }
+    timeout {
+        puts "\n❌ Timeout connecting to $vm_ip"
+        exit 1
+    }
+    eof {
+        puts "\n⚠️  Connection ended for $vm_ip"
+        exit 0
+    }
+}
