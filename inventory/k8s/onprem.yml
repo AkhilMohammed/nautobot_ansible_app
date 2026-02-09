@@ -8,7 +8,7 @@ all:
     k8s_control_plane:
       hosts:
         onprem-k8s-master:
-          ansible_host: 172.17.152.102  # REPLACE - Master & Ingress LoadBalancer
+          ansible_host: 172.17.152.109  # REPLACE - Master & Ingress LoadBalancer
           ansible_user: ubuntu  # REPLACE with your SSH username
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
@@ -74,7 +74,7 @@ all:
     github_runner:
       hosts:
         onprem-runner-01:
-          ansible_host: 172.17.152.109  # CI/CD Runner
+          ansible_host: 172.17.152.102  # CI/CD Runner
           ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
