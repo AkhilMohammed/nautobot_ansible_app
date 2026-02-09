@@ -40,7 +40,32 @@
           - software-properties-common
           - net-tools
           - vim
+          - chrony
         state: present
+
+    - name: Ensure chrony service is started
+      ansible.builtin.service:
+        name: chronyd
+        state: started
+        enabled: yes
+
+    - name: Force immediate time synchronization
+      ansible.builtin.command: chronyc makestep
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Wait for time sync to complete
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Verify time is synchronized
+      ansible.builtin.command: timedatectl status
+      register: time_status
+      changed_when: false
+
+    - name: Display time sync status
+      ansible.builtin.debug:
+        var: time_status.stdout_lines
 
     - name: Disable swap immediately
       ansible.builtin.command: swapoff -a
