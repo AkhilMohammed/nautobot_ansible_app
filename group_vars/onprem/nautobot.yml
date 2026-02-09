@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Retry deployment with API server readiness check before Flannel CNI
+#Retry: Fixed Flannel CNI check and master readiness wait logic
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
