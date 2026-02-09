@@ -1,0 +1,128 @@
+---
+# Playbook for On-Premises Nautobot Deployment
+# Usage: ansible-playbook -i inventory/vm/onprem.yml playbooks/deploy_onprem_all.yml --ask-vault-pass
+
+- name: Deploy PostgreSQL Database
+  hosts: postgres
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  roles:
+    - role: vm_postgres
+      tags: [postgres, database, infra]
+
+- name: Deploy Redis Cache
+  hosts: redis
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  roles:
+    - role: vm_redis
+      tags: [redis, cache, infra]
+
+- name: Deploy Nautobot Web Nodes
+  hosts: nautobot_web
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  roles:
+    - role: vm_nautobot_app
+      tags: [nautobot, web, app]
+  post_tasks:
+    - name: Ensure Nautobot web service is running
+      ansible.builtin.systemd:
+        name: nautobot.service
+        state: started
+        enabled: true
+      tags: [verify]
+
+- name: Deploy Nautobot Worker Nodes
+  hosts: nautobot_worker
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  roles:
+    - role: vm_nautobot_worker
+      tags: [nautobot, worker]
+  post_tasks:
+    - name: Ensure Nautobot worker service is running
+      ansible.builtin.systemd:
+        name: nautobot-worker.service
+        state: started
+        enabled: true
+      tags: [verify]
+
+- name: Deploy Nautobot Scheduler Node
+  hosts: nautobot_scheduler
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  roles:
+    - role: vm_nautobot_scheduler
+      tags: [nautobot, scheduler]
+  post_tasks:
+    - name: Ensure Nautobot scheduler service is running
+      ansible.builtin.systemd:
+        name: nautobot-scheduler.service
+        state: started
+        enabled: true
+      tags: [verify]
+
+- name: Verify Deployment
+  hosts: nautobot_web
+  become: false
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+  tasks:
+    - name: Wait for Nautobot web service
+      ansible.builtin.wait_for:
+        port: 8000
+        host: "{{ ansible_host }}"
+        timeout: 60
+      tags: [verify]
+
+    - name: Check Nautobot API health
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:8000/health/"
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: health_check
+      retries: 5
+      delay: 10
+      until: health_check.status == 200
+      tags: [verify]
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ Nautobot deployment completed successfully!"
+          - "Web Nodes: {{ groups['nautobot_web'] | join(', ') }}"
+          - "Worker Nodes: {{ groups['nautobot_worker'] | join(', ') }}"
+          - "Scheduler: {{ groups['nautobot_scheduler'] | join(', ') }}"
+          - "PostgreSQL: {{ groups['postgres'] | join(', ') }}"
+          - "Redis: {{ groups['redis'] | join(', ') }}"
+          - "Access Nautobot at: http://{{ ansible_host }}:8000"
+      tags: [verify]

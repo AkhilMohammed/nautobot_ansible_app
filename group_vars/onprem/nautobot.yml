@@ -1,0 +1,72 @@
+---
+# On-Premises Environment Configuration
+
+nautobot_user: "nautobot"
+nautobot_group: "nautobot"
+nautobot_root: "/opt/nautobot"
+nautobot_venv: "{{ nautobot_root }}/venv"
+nautobot_config_path: "{{ nautobot_root }}/nautobot_config.py"
+nautobot_logs_path: "{{ nautobot_root }}/logs"
+nautobot_media_path: "{{ nautobot_root }}/media"
+nautobot_static_path: "{{ nautobot_root }}/static"
+nautobot_git_path: "{{ nautobot_root }}/git"
+nautobot_git_root: "{{ nautobot_root }}/.nautobot"
+nautobot_jobs_root: "{{ nautobot_root }}/jobs"
+python_version: "python3.11"
+nautobot_environment: onprem
+nautobot_debug: false  # Set to true for debugging
+nautobot_log_level: INFO
+nautobot_version: "3.0.6"
+
+systemd_path: "/etc/systemd/system"
+
+# Database Configuration - Points to your PostgreSQL VM
+nautobot_db:
+  engine: "django.db.backends.postgresql"
+  name: "{{ vault_database_name }}"
+  user: "{{ vault_database_user }}"
+  password: "{{ vault_database_password }}"
+  host: "192.168.1.16"  # REPLACE with your PostgreSQL VM IP
+  port: 5432
+  conn_max_age: 300
+  options:
+    sslmode: "prefer"
+
+# Redis Configuration - Points to your Redis VM
+nautobot_redis:
+  host: "192.168.1.17"  # REPLACE with your Redis VM IP
+  port: 6379
+  database: 0
+  password: "{{ vault_redis_password }}"
+  ssl: false
+
+# Celery Configuration
+nautobot_celery_broker_url: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/{{ nautobot_redis.database }}"
+nautobot_celery_result_backend: "redis://{{ nautobot_redis.host }}:{{ nautobot_redis.port }}/1"
+
+# Allowed Hosts - Add your web node IPs and load balancer IP
+nautobot_allowed_hosts:
+  - "localhost"
+  - "127.0.0.1"
+  - "192.168.1.11"  # Web node 1
+  - "192.168.1.12"  # Web node 2
+  - "your-domain.com"  # REPLACE with your domain if you have one
+
+# Nautobot Configuration
+nautobot_secret_key: "{{ vault_nautobot_secret_key }}"
+nautobot_superuser_username: "{{ vault_nautobot_superuser_username }}"
+nautobot_superuser_password: "{{ vault_nautobot_superuser_password }}"
+nautobot_superuser_email: "{{ vault_nautobot_superuser_email }}"
+
+# Services to manage
+nautobot_services:
+  - nautobot.service
+  - nautobot-worker.service
+  - nautobot-scheduler.service
+
+# Load Balancer Configuration (if you have one)
+# load_balancer_ip: "192.168.1.10"  # REPLACE if you have a load balancer
+
+# GitLab Runner Configuration
+gitlab_runner_registration_token: "{{ vault_gitlab_runner_token }}"
+gitlab_url: "https://gitlab.com"  # REPLACE with your GitLab instance URL

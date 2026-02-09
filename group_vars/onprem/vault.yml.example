@@ -1,0 +1,37 @@
+---
+# On-Premises Vault Configuration - PASSWORDS AND SECRETS
+# This is an EXAMPLE file. To use it:
+# 1. Copy this file: cp vault.yml.example vault.yml
+# 2. Replace all values with your actual credentials
+# 3. Encrypt it: ansible-vault encrypt group_vars/onprem/vault.yml
+# 4. Use --ask-vault-pass when running playbooks
+
+# SSH Access Credentials
+vault_ssh_password: "your_vm_ssh_password_here"
+
+# Database Credentials
+vault_database_name: "nautobot"
+vault_database_user: "nautobot"
+vault_database_password: "your_strong_postgres_password_here"
+
+# PostgreSQL Admin Credentials (for initial setup)
+vault_postgres_admin_user: "postgres"
+vault_postgres_admin_password: "your_postgres_admin_password_here"
+
+# Redis Credentials
+vault_redis_password: "your_strong_redis_password_here"
+
+# Nautobot Application Secrets
+vault_nautobot_secret_key: "your_50_character_random_secret_key_here_generate_with_python"
+vault_nautobot_superuser_username: "admin"
+vault_nautobot_superuser_password: "your_nautobot_admin_password_here"
+vault_nautobot_superuser_email: "admin@example.com"
+
+# GitLab Runner Token (get from your GitLab project settings)
+vault_gitlab_runner_token: "your_gitlab_runner_registration_token_here"
+
+# Optional: GitHub/GitLab Personal Access Token for private repos
+vault_git_token: "your_git_personal_access_token_here"
+
+# Optional: Additional API keys or tokens
+vault_smtp_password: "your_email_smtp_password_if_needed"

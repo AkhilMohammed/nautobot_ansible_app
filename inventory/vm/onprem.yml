@@ -1,0 +1,82 @@
+---
+# On-Premises Nautobot Deployment Inventory
+# Replace the IP addresses below with your actual VM IPs
+
+all:
+  children:
+    # Web Nodes - 2 VMs for Nautobot Web Application
+    nautobot_web:
+      hosts:
+        onprem-nautobot-web-01:
+          ansible_host: 192.168.1.11  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"  # Password stored in vault
+          deploy_env: onprem
+          deployment_type: vm
+        onprem-nautobot-web-02:
+          ansible_host: 192.168.1.12  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+    # Worker Nodes - 2 VMs for Celery Workers
+    nautobot_worker:
+      hosts:
+        onprem-nautobot-worker-01:
+          ansible_host: 192.168.1.13  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+        onprem-nautobot-worker-02:
+          ansible_host: 192.168.1.14  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+    # Scheduler - 1 VM for Celery Beat Scheduler
+    nautobot_scheduler:
+      hosts:
+        onprem-nautobot-scheduler-01:
+          ansible_host: 192.168.1.15  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+    # PostgreSQL Database - 1 VM
+    postgres:
+      hosts:
+        onprem-postgres-01:
+          ansible_host: 192.168.1.16  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+    # Redis Cache - 1 VM
+    redis:
+      hosts:
+        onprem-redis-01:
+          ansible_host: 192.168.1.17  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+    # GitLab/GitHub Runner - 1 VM for CI/CD Pipeline
+    gitlab_runner:
+      hosts:
+        onprem-runner-01:
+          ansible_host: 192.168.1.18  # REPLACE with your VM IP
+          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_ssh_pass: "{{ vault_ssh_password }}"
+          deploy_env: onprem
+          deployment_type: vm
+
+  vars:
+    # Global variables for on-prem environment
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

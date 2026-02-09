@@ -1,0 +1,90 @@
+---
+# GitLab CI/CD Pipeline for On-Premises Nautobot Deployment
+# This pipeline will automatically deploy Nautobot when you push to the branch
+
+stages:
+  - validate
+  - deploy_infrastructure
+  - deploy_application
+  - verify
+
+variables:
+  ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_HOST_KEY_CHECKING: "false"
+
+# Validate Ansible syntax before deployment
+validate_ansible:
+  stage: validate
+  tags:
+    - onprem
+  script:
+    - ansible-playbook --syntax-check -i inventory/vm/onprem.yml playbooks/deploy_onprem_all.yml
+  only:
+    - feat/onprem-deployment
+    - main
+
+# Deploy PostgreSQL and Redis (Infrastructure Layer)
+deploy_infrastructure:
+  stage: deploy_infrastructure
+  tags:
+    - onprem
+  script:
+    - |
+      ansible-playbook -i inventory/vm/onprem.yml \
+        playbooks/deploy_onprem_all.yml \
+        --tags "postgres,redis" \
+        --vault-password-file /path/to/vault_pass.txt
+  only:
+    - feat/onprem-deployment
+    - main
+  when: manual
+
+# Deploy Nautobot Application (Web, Worker, Scheduler)
+deploy_application:
+  stage: deploy_application
+  tags:
+    - onprem
+  script:
+    - |
+      ansible-playbook -i inventory/vm/onprem.yml \
+        playbooks/deploy_onprem_all.yml \
+        --tags "nautobot,web,worker,scheduler" \
+        --vault-password-file /path/to/vault_pass.txt
+  dependencies:
+    - deploy_infrastructure
+  only:
+    - feat/onprem-deployment
+    - main
+  when: manual
+
+# Verify Deployment
+verify_deployment:
+  stage: verify
+  tags:
+    - onprem
+  script:
+    - |
+      ansible-playbook -i inventory/vm/onprem.yml \
+        playbooks/deploy_onprem_all.yml \
+        --tags "verify" \
+        --vault-password-file /path/to/vault_pass.txt
+  dependencies:
+    - deploy_application
+  only:
+    - feat/onprem-deployment
+    - main
+
+# Full deployment (all at once) - Use with caution
+deploy_full_stack:
+  stage: deploy_application
+  tags:
+    - onprem
+  script:
+    - |
+      ansible-playbook -i inventory/vm/onprem.yml \
+        playbooks/deploy_onprem_all.yml \
+        --vault-password-file /path/to/vault_pass.txt
+  only:
+    - feat/onprem-deployment
+  when: manual
+  allow_failure: false
