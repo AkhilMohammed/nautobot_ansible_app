@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-# CI/CD Test: Pipeline triggered on 2026-02-09 - run 3 with system Python
+#CI/CD Test: Pipeline triggered - fixing PEP 668 error
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
