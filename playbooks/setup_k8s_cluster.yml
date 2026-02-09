@@ -1,0 +1,208 @@
+---
+# Playbook to Setup On-Premises Kubernetes Cluster (kubeadm)
+# This will install and configure a K8s cluster on your VMs
+# Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/setup_k8s_cluster.yml --ask-vault-pass
+
+- name: Prepare all nodes for Kubernetes
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Disable swap
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '.*swap.*'
+        state: absent
+
+    - name: Load kernel modules
+      ansible.builtin.copy:
+        content: |
+          overlay
+          br_netfilter
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+
+    - name: Load modules now
+      ansible.builtin.shell: |
+        modprobe overlay
+        modprobe br_netfilter
+
+    - name: Set sysctl parameters
+      ansible.builtin.copy:
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward                 = 1
+        dest: /etc/sysctl.d/k8s.conf
+        mode: '0644'
+
+    - name: Apply sysctl parameters
+      ansible.builtin.command: sysctl --system
+
+    - name: Install containerd
+      ansible.builtin.apt:
+        name:
+          - containerd
+        state: present
+
+    - name: Configure containerd
+      ansible.builtin.shell: |
+        mkdir -p /etc/containerd
+        containerd config default > /etc/containerd/config.toml
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: Add Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        state: present
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+- name: Initialize Kubernetes Master
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Check if cluster is already initialized
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_initialized
+
+    - name: Initialize Kubernetes cluster
+      ansible.builtin.command: >
+        kubeadm init
+        --pod-network-cidr=10.244.0.0/16
+        --apiserver-advertise-address={{ ansible_host }}
+      when: not k8s_initialized.stat.exists
+      register: kubeadm_init
+
+    - name: Create .kube directory for user
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy kubeconfig to user home
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Install Flannel CNI
+      ansible.builtin.command: >
+        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      become_user: "{{ ansible_user }}"
+      when: not k8s_initialized.stat.exists
+
+    - name: Get join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+    - name: Save join command
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ join_command.stdout }}"
+
+    - name: Display join command
+      ansible.builtin.debug:
+        msg: "{{ k8s_join_command }}"
+
+- name: Join worker nodes to cluster
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check if node is already joined
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: node_joined
+
+    - name: Join cluster
+      ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+      when: not node_joined.stat.exists
+
+- name: Verify cluster
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Wait for nodes to be ready
+      ansible.builtin.command: kubectl get nodes
+      register: nodes_status
+      until: nodes_status.stdout.find("NotReady") == -1
+      retries: 30
+      delay: 10
+
+    - name: Display cluster status
+      ansible.builtin.command: kubectl get nodes -o wide
+      register: cluster_nodes
+
+    - name: Show cluster info
+      ansible.builtin.debug:
+        msg:
+          - "✅ Kubernetes cluster setup complete!"
+          - "{{ cluster_nodes.stdout_lines }}"
+          - ""
+          - "Next steps:"
+          - "1. Deploy PostgreSQL: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_onprem.yml --tags postgres"
+          - "2. Deploy Redis: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_onprem.yml --tags redis"
+          - "3. Deploy Nautobot: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_onprem.yml --tags nautobot"

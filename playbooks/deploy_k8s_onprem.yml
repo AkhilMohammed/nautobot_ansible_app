@@ -1,0 +1,107 @@
+---
+# Playbook to Deploy Nautobot on On-Premises Kubernetes Cluster
+# Prerequisites: K8s cluster must be already set up
+# Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_onprem.yml --ask-vault-pass
+
+- name: Deploy Infrastructure (PostgreSQL & Redis) on VMs
+  hosts: postgres,redis
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Deploy PostgreSQL
+      include_role:
+        name: vm_postgres
+      when: "'postgres' in group_names"
+      tags: [postgres, infra]
+
+    - name: Deploy Redis
+      include_role:
+        name: vm_redis
+      when: "'redis' in group_names"
+      tags: [redis, infra]
+
+- name: Verify Kubernetes Cluster
+  hosts: onprem_k8s
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  pre_tasks:
+    - name: Check if kubectl is installed
+      ansible.builtin.command: kubectl version --client
+      register: kubectl_check
+      changed_when: false
+      tags: [always]
+
+    - name: Verify cluster connectivity
+      kubernetes.core.k8s_cluster_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: cluster_info
+      tags: [always]
+
+    - name: Display cluster info
+      ansible.builtin.debug:
+        msg:
+          - "Kubernetes Version: {{ cluster_info.version.server.kubernetes.gitVersion }}"
+          - "Cluster API: {{ cluster_info.connection.host }}"
+      tags: [always]
+
+    - name: Display deployment context
+      ansible.builtin.debug:
+        msg:
+          - "Deploying Nautobot {{ nautobot_version }} to K8s"
+          - "Environment: onprem"
+          - "Database: {{ nautobot_db.host }}"
+          - "Redis: {{ nautobot_redis.host }}"
+      tags: [always]
+
+  roles:
+    - role: k8s_namespace
+      tags: [k8s, namespace]
+
+    - role: k8s_nautobot
+      tags: [k8s, nautobot, app]
+
+  post_tasks:
+    - name: Wait for Nautobot pods to be ready
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Pod
+        namespace: nautobot
+        label_selectors:
+          - app=nautobot
+      register: nautobot_pods
+      until: nautobot_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+      retries: 30
+      delay: 10
+      tags: [verify]
+
+    - name: Get Nautobot service details
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Service
+        namespace: nautobot
+        name: nautobot
+      register: nautobot_service
+      tags: [verify]
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ Nautobot deployed to Kubernetes successfully!"
+          - "Namespace: nautobot"
+          - "Service Type: {{ nautobot_service.resources[0].spec.type }}"
+          - "Pods Running: {{ nautobot_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}"
+          - ""
+          - "Access Nautobot:"
+          - "  kubectl port-forward -n nautobot svc/nautobot 8000:8000"
+          - "  Then visit: http://localhost:8000"
+          - ""
+          - "Or configure LoadBalancer/Ingress for external access"
+      tags: [verify]
