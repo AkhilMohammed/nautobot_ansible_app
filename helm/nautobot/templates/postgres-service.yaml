@@ -1,0 +1,26 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nautobot.fullname" . }}-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+  {{- with .Values.postgresql.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.postgresql.service.type }}
+  clusterIP: {{ .Values.postgresql.service.clusterIP | default "None" }}
+  ports:
+    - name: postgresql
+      port: {{ .Values.postgresql.service.port }}
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "nautobot.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+  sessionAffinity: None
+{{- end }}
