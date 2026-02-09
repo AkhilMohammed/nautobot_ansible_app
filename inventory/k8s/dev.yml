@@ -5,6 +5,6 @@ all:
         dev-k8s-master:
           ansible_host: 172.17.228.202
           ansible_user: ubuntu
-          environment: dev
+          deploy_env: dev
           deployment_type: k8s
           kubeconfig_path: "~/.kube/dev-config"
