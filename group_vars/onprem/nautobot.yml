@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#CI/CD Test: Testing with --break-system-packages
+#SSH Setup: Documented automated deployment - see SSH_SETUP_README.md
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
