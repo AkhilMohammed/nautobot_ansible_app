@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#SSH Setup: Documented automated deployment - see SSH_SETUP_README.md
+#CI/CD Ready: SSH keys deployed to all VMs - automated deployment active
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
