@@ -234,9 +234,9 @@ jobs:
           echo "Deploying to: Kubernetes cluster"
           echo ""
           
+          # Run full deployment (remove --tags for complete infrastructure setup)
           ansible-playbook -i inventory/k8s/onprem.yml \
             playbooks/deploy_k8s_production.yml \
-            --tags "nautobot,app" \
             --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }} \
             -v
 
