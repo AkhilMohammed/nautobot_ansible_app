@@ -41,40 +41,30 @@
           - net-tools
           - vim
           - chrony
-          - ntpdate
         state: present
 
-    - name: Stop chrony temporarily to fix time
-      ansible.builtin.service:
-        name: chrony
-        state: stopped
-      ignore_errors: yes
-
-    - name: Force time sync with ntpdate
-      ansible.builtin.command: ntpdate -s time.nist.gov
+    - name: Enable systemd time synchronization
+      ansible.builtin.command: timedatectl set-ntp true
       changed_when: false
       ignore_errors: yes
 
-    - name: Alternative time sync with pool.ntp.org
-      ansible.builtin.command: ntpdate -s pool.ntp.org
-      changed_when: false
-      ignore_errors: yes
-      when: ansible_facts['date_time']['epoch']|int < 1770658000
-
-    - name: Start and enable chrony service
+    - name: Restart chrony service to force immediate sync
       ansible.builtin.service:
         name: chrony
-        state: started
+        state: restarted
         enabled: yes
 
-    - name: Force chrony to sync immediately
-      ansible.builtin.command: chronyc -a makestep
+    - name: Force aggressive time sync with chrony burst mode
+      ansible.builtin.shell: |
+        chronyc -a 'burst 4/4'
+        sleep 2
+        chronyc -a makestep
       changed_when: false
       ignore_errors: yes
 
     - name: Wait for time sync to stabilize
       ansible.builtin.pause:
-        seconds: 3
+        seconds: 5
 
     - name: Verify time is synchronized
       ansible.builtin.command: timedatectl status
