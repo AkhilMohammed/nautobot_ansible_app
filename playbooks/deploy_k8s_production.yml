@@ -71,6 +71,39 @@
       register: time_status
       changed_when: false
 
+    - name: Check if system clock is reasonable (compare with chrony tracking)
+      ansible.builtin.shell: |
+        # Get system offset from chrony
+        OFFSET=$(chronyc -n tracking | grep "System time" | awk '{print $4}')
+        # If offset is greater than 1 second, fail
+        if [ -n "$OFFSET" ]; then
+          ABS_OFFSET=$(echo "$OFFSET" | tr -d '-')
+          COMPARE=$(echo "$ABS_OFFSET > 1.0" | bc -l 2>/dev/null || echo "0")
+          if [ "$COMPARE" = "1" ]; then
+            echo "ERROR: Clock offset is ${OFFSET} seconds - too high"
+            exit 1
+          fi
+        fi
+        echo "Clock offset is acceptable: ${OFFSET} seconds"
+      register: clock_check
+      changed_when: false
+      failed_when: false
+
+    - name: Force additional time sync if clock is still off
+      ansible.builtin.shell: |
+        chronyc -a 'burst 4/4'
+        sleep 3
+        chronyc -a makestep
+        sleep 2
+      when: clock_check.rc != 0
+      changed_when: false
+
+    - name: Ensure chrony is running and will stay running
+      ansible.builtin.service:
+        name: chrony
+        state: started
+        enabled: yes
+
     - name: Display time sync status
       ansible.builtin.debug:
         var: time_status.stdout_lines
@@ -351,6 +384,32 @@
   serial: 1
 
   tasks:
+    - name: Ensure chrony is running on worker before join
+      ansible.builtin.service:
+        name: chrony
+        state: started
+        enabled: yes
+
+    - name: Force time sync on worker node before joining cluster
+      ansible.builtin.shell: |
+        timedatectl set-ntp true
+        systemctl restart chrony
+        sleep 2
+        chronyc -a 'burst 4/4'
+        sleep 3
+        chronyc -a makestep
+        sleep 2
+      changed_when: false
+
+    - name: Verify worker node time is synchronized
+      ansible.builtin.command: timedatectl status
+      register: worker_time_status
+      changed_when: false
+
+    - name: Display worker time status
+      ansible.builtin.debug:
+        msg: "Worker node time status: {{ worker_time_status.stdout_lines }}"
+
     - name: Check if node is already part of cluster
       ansible.builtin.stat:
         path: /etc/kubernetes/kubelet.conf
@@ -372,8 +431,33 @@
     - "../group_vars/onprem/nautobot.yml"
 
   tasks:
+    - name: Verify API server is still responsive
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        timeout: 30
+        state: started
+      register: api_check
+      ignore_errors: yes
+
+    - name: Check API server health via kubectl
+      ansible.builtin.command: kubectl cluster-info
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: cluster_info
+      retries: 5
+      delay: 10
+      until: cluster_info.rc == 0
+      changed_when: false
+
+    - name: Display cluster info
+      ansible.builtin.debug:
+        msg: "{{ cluster_info.stdout_lines }}"
+
     - name: Wait for all nodes to be ready
       ansible.builtin.command: kubectl get nodes
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       register: nodes_status
       until: "'NotReady' not in nodes_status.stdout"
       retries: 30
