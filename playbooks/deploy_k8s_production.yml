@@ -424,10 +424,20 @@
       ansible.builtin.debug:
         msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if node_registered.rc == 0 else 'not registered' }}"
 
-    - name: Remove stale kubelet config if node not registered
+    - name: Stop kubelet service if node not registered
+      ansible.builtin.service:
+        name: kubelet
+        state: stopped
+      when: node_registered.rc != 0
+      ignore_errors: yes
+
+    - name: Remove stale Kubernetes config if node not registered
       ansible.builtin.file:
-        path: /etc/kubernetes/kubelet.conf
+        path: "{{ item }}"
         state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/kubelet
       when: node_registered.rc != 0
 
     - name: Check if kubelet.conf exists after cleanup
