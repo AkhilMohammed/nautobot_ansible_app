@@ -1,0 +1,213 @@
+# Nautobot Helm Chart - Production Configuration
+
+# Docker image configuration
+image:
+  repository: networktocode/nautobot
+  tag: "3.0.6-py3.11"
+  pullPolicy: IfNotPresent
+
+# Nautobot Web (UI/API) Configuration
+web:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  nodeSelector:
+    workload: web
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - web
+            topologyKey: kubernetes.io/hostname
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8000
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Celery Worker Configuration
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 3Gi
+  nodeSelector:
+    workload: worker
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - worker
+            topologyKey: kubernetes.io/hostname
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+# Celery Beat Scheduler Configuration
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector: {}
+
+# Database Configuration (External)
+database:
+  host: "192.168.1.16"  # Will be overridden by Ansible
+  port: 5432
+  name: nautobot
+  engine: django.db.backends.postgresql
+  # Credentials in secrets
+  existingSecret: nautobot-secrets
+  usernameKey: db-user
+  passwordKey: db-password
+
+# Redis Configuration (External)
+redis:
+  host: "192.168.1.17"  # Will be overridden by Ansible
+  port: 6379
+  database: 0
+  # Password in secrets
+  existingSecret: nautobot-secrets
+  passwordKey: redis-password
+  ssl: false
+
+# Nautobot Application Configuration
+nautobot:
+  secretKeySecret: nautobot-secrets
+  superuser:
+    enabled: true
+    username: admin
+    email: admin@example.com
+    passwordSecret: nautobot-secrets
+    passwordKey: superuser-password
+  allowedHosts:
+    - "*"
+  debug: false
+  logLevel: INFO
+  metricsEnabled: true
+
+# Persistent Storage
+persistence:
+  enabled: true
+  storageClass: ""  # Use default storage class
+  media:
+    size: 10Gi
+    accessMode: ReadWriteMany
+  static:
+    size: 2Gi
+    accessMode: ReadWriteMany
+  git:
+    size: 5Gi
+    accessMode: ReadWriteMany
+
+# Service Configuration
+service:
+  type: ClusterIP
+  port: 8000
+  annotations: {}
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  host: nautobot.local  # Will be overridden by Ansible
+  tls:
+    enabled: false
+    secretName: nautobot-tls
+
+# Security Context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  fsGroup: 999
+  capabilities:
+    drop:
+      - ALL
+
+# Pod Security Policy
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  fsGroup: 999
+
+# Service Account
+serviceAccount:
+  create: true
+  name: nautobot
+  annotations: {}
+
+# Init Containers
+initContainers:
+  enabled: true
+  migrations:
+    enabled: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Metrics and Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# Extra environment variables
+extraEnv: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []

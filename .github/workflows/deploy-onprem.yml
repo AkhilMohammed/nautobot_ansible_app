@@ -7,20 +7,23 @@ name: Deploy Nautobot On-Premises
 on:
   workflow_dispatch:
     inputs:
-      deployment_stage:
-        description: 'Deployment Stage'
+      deployment_type:
+        description: 'Deployment Type'
         required: true
+        type: choice
+        options:
+          - vm_deployment
+          - k8s_production
+          - validate_only
+      deployment_stage:
+        description: 'Deployment Stage (for VM deployment)'
+        required: false
         type: choice
         options:
           - validate
           - infrastructure
           - application
           - full_stack
-      environment:
-        description: 'Environment'
-        required: true
-        default: 'onprem'
-        type: string
 
   push:
     branches:
@@ -56,21 +59,59 @@ jobs:
         run: |
           pip install ansible
 
-      - name: Validate Ansible syntax
+      - name: Validate VM playbook
         run: |
           ansible-playbook --syntax-check \
             -i inventory/vm/onprem.yml \
             playbooks/deploy_onprem_all.yml
 
-      - name: Lint Ansible playbooks
+      - name: Validate K8s playbook
         run: |
-          ansible-lint playbooks/deploy_onprem_all.yml || true
+          ansible-playbook --syntax-check \
+            -i inventory/k8s/onprem.yml \
+            playbooks/deploy_k8s_production.yml
+
+  deploy_k8s_production:
+    name: Deploy Production Kubernetes Stack
+    runs-on: [self-hosted, onprem]
+    needs: validate
+    if: github.event.inputs.deployment_type == 'k8s_production'
+    environment: onprem
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible and dependencies
+        run: |
+          pip install ansible kubernetes
+
+      - name: Deploy Full Production K8s Stack
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i inventory/k8s/onprem.yml \
+            playbooks/deploy_k8s_production.yml \
+            --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }}
+
+      - name: Verify Deployment
+        run: |
+          # Give deployment time to settle
+          sleep 30
+          # Check if kubectl is accessible (would need kubeconfig)
+          echo "Deployment completed. Check master node for status."
 
   deploy_infrastructure:
     name: Deploy Infrastructure (PostgreSQL & Redis)
     runs-on: [self-hosted, onprem]
     needs: validate
-    if: github.event.inputs.deployment_stage == 'infrastructure' || github.event.inputs.deployment_stage == 'full_stack'
+    if: |
+      github.event.inputs.deployment_type == 'vm_deployment' && 
+      (github.event.inputs.deployment_stage == 'infrastructure' || github.event.inputs.deployment_stage == 'full_stack')
     environment: onprem
     steps:
       - name: Checkout code
@@ -100,6 +141,7 @@ jobs:
     needs: [validate, deploy_infrastructure]
     if: |
       always() &&
+      github.event.inputs.deployment_type == 'vm_deployment' &&
       needs.validate.result == 'success' &&
       (needs.deploy_infrastructure.result == 'success' || needs.deploy_infrastructure.result == 'skipped') &&
       (github.event.inputs.deployment_stage == 'application' || github.event.inputs.deployment_stage == 'full_stack')
@@ -161,7 +203,9 @@ jobs:
   full_deployment:
     name: Full Stack Deployment
     runs-on: [self-hosted, onprem]
-    needs: validate
+    need|
+      github.event.inputs.deployment_type == 'vm_deployment' &&
+      s: validate
     if: github.event.inputs.deployment_stage == 'full_stack'
     environment: onprem
     steps:

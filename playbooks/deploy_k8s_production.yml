@@ -1,0 +1,519 @@
+---
+# Production-Ready Kubernetes Nautobot Deployment with Helm
+# Fully automated: Installs K8s, Helm, Ingress, and deploys Nautobot
+# Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
+
+- name: Prepare all Kubernetes nodes
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Set hostname for each node
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+        use: systemd
+
+    - name: Update /etc/hosts with all cluster nodes
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+        state: present
+      loop: "{{ groups['k8s_control_plane'] + groups['k8s_workers'] }}"
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisite packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+          - net-tools
+          - vim
+        state: present
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^[^#].*swap.*'
+        state: absent
+
+    - name: Create modules-load.d directory
+      ansible.builtin.file:
+        path: /etc/modules-load.d
+        state: directory
+        mode: '0755'
+
+    - name: Load required kernel modules
+      ansible.builtin.copy:
+        content: |
+          overlay
+          br_netfilter
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+
+    - name: Load modules immediately
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Configure sysctl for Kubernetes
+      ansible.builtin.copy:
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward                 = 1
+        dest: /etc/sysctl.d/k8s.conf
+        mode: '0644'
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+    - name: Install containerd
+      ansible.builtin.apt:
+        name:
+          - containerd
+        state: present
+
+    - name: Create containerd config directory
+      ansible.builtin.file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: Generate default containerd config
+      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Configure containerd to use systemd cgroup
+      ansible.builtin.lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*SystemdCgroup\s*='
+        line: '            SystemdCgroup = true'
+        state: present
+
+    - name: Restart and enable containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Kubernetes apt signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        dest: /tmp/kubernetes-release.key
+        mode: '0644'
+
+    - name: Add Kubernetes apt signing key
+      ansible.builtin.shell: |
+        gpg --dearmor < /tmp/kubernetes-release.key > /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - kubelet=1.28.*
+          - kubeadm=1.28.*
+          - kubectl=1.28.*
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages from auto-upgrade
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Enable kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: yes
+
+- name: Initialize Kubernetes Master Node
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Check if Kubernetes is already initialized
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_initialized
+
+    - name: Initialize Kubernetes cluster
+      ansible.builtin.command: >
+        kubeadm init
+        --pod-network-cidr=10.244.0.0/16
+        --service-cidr=10.96.0.0/12
+        --apiserver-advertise-address={{ ansible_host }}
+        --control-plane-endpoint={{ ansible_host }}:6443
+      when: not k8s_initialized.stat.exists
+      register: kubeadm_init_output
+
+    - name: Create .kube directory for ansible user
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy kubeconfig to ansible user
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Create .kube directory for root
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        mode: '0755'
+
+    - name: Copy kubeconfig to root
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: '0600'
+
+    - name: Install Flannel CNI network plugin
+      ansible.builtin.command: >
+        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      when: not k8s_initialized.stat.exists
+
+    - name: Wait for control plane to be ready
+      ansible.builtin.command: kubectl get nodes
+      become_user: "{{ ansible_user }}"
+      register: nodes_status
+      until: nodes_status.rc == 0
+      retries: 10
+      delay: 10
+      changed_when: false
+
+    - name: Generate join command for workers
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+    - name: Save join command as fact
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ join_command.stdout }}"
+
+- name: Join worker nodes to cluster
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+  serial: 1
+
+  tasks:
+    - name: Check if node is already part of cluster
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: node_joined
+
+    - name: Join worker node to cluster
+      ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+      when: not node_joined.stat.exists
+
+    - name: Wait for node to be ready
+      pause:
+        seconds: 10
+
+- name: Configure node labels and taints
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Wait for all nodes to be ready
+      ansible.builtin.command: kubectl get nodes
+      register: nodes_status
+      until: "'NotReady' not in nodes_status.stdout"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Label web worker nodes
+      ansible.builtin.command: >
+        kubectl label nodes {{ item }} workload=web --overwrite
+      loop:
+        - onprem-k8s-web-01
+        - onprem-k8s-web-02
+      ignore_errors: yes
+
+    - name: Label celery worker nodes
+      ansible.builtin.command: >
+        kubectl label nodes {{ item }} workload=worker --overwrite
+      loop:
+        - onprem-k8s-worker-01
+        - onprem-k8s-worker-02
+      ignore_errors: yes
+
+- name: Install Helm on master node
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Check if Helm is installed
+      ansible.builtin.command: helm version
+      register: helm_check
+      failed_when: false
+      changed_when: false
+
+    - name: Download Helm installation script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0700'
+      when: helm_check.rc != 0
+
+    - name: Install Helm
+      ansible.builtin.command: /tmp/get_helm.sh
+      when: helm_check.rc != 0
+
+    - name: Verify Helm installation
+      ansible.builtin.command: helm version
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+
+- name: Install Nginx Ingress Controller (Load Balancer)
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Add Nginx Ingress Helm repository
+      ansible.builtin.command: >
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+      changed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      changed_when: false
+
+    - name: Check if Nginx Ingress is installed
+      ansible.builtin.command: helm list -n ingress-nginx
+      register: ingress_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Install Nginx Ingress Controller
+      ansible.builtin.command: >
+        helm install ingress-nginx ingress-nginx/ingress-nginx
+        --namespace ingress-nginx
+        --create-namespace
+        --set controller.service.type=NodePort
+        --set controller.service.nodePorts.http=30080
+        --set controller.service.nodePorts.https=30443
+        --set controller.hostNetwork=true
+        --set controller.kind=DaemonSet
+        --set controller.nodeSelector."node-role\.kubernetes\.io/control-plane"=""
+        --set controller.tolerations[0].key=node-role.kubernetes.io/control-plane
+        --set controller.tolerations[0].effect=NoSchedule
+      when: "'ingress-nginx' not in ingress_installed.stdout"
+
+    - name: Wait for Ingress Controller to be ready
+      ansible.builtin.command: >
+        kubectl wait --namespace ingress-nginx
+        --for=condition=ready pod
+        --selector=app.kubernetes.io/component=controller
+        --timeout=300s
+      changed_when: false
+
+- name: Deploy PostgreSQL and Redis on VMs
+  hosts: postgres,redis
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all/nautobot.yml"
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Deploy PostgreSQL
+      include_role:
+        name: vm_postgres
+      when: "'postgres' in group_names"
+      tags: [postgres]
+
+    - name: Deploy Redis
+      include_role:
+        name: vm_redis
+      when: "'redis' in group_names"
+      tags: [redis]
+
+- name: Deploy Nautobot using Helm
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Create Helm charts directory
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/nautobot-helm"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Helm chart to master
+      ansible.builtin.copy:
+        src: "../helm/nautobot/"
+        dest: "/home/{{ ansible_user }}/nautobot-helm/"
+        mode: '0644'
+
+    - name: Create nautobot namespace
+      ansible.builtin.command: kubectl create namespace nautobot
+      register: namespace_created
+      failed_when: false
+      changed_when: "'created' in namespace_created.stdout"
+
+    - name: Create Nautobot secrets
+      ansible.builtin.shell: |
+        kubectl create secret generic nautobot-secrets \
+          --namespace=nautobot \
+          --from-literal=db-password='{{ vault_database_password }}' \
+          --from-literal=db-user='{{ vault_database_user }}' \
+          --from-literal=secret-key='{{ vault_nautobot_secret_key }}' \
+          --from-literal=superuser-password='{{ vault_nautobot_superuser_password }}' \
+          --from-literal=redis-password='{{ vault_redis_password }}' \
+          --dry-run=client -o yaml | kubectl apply -f -
+      no_log: true
+
+    - name: Deploy Nautobot with Helm
+      ansible.builtin.command: >
+        helm upgrade --install nautobot /home/{{ ansible_user }}/nautobot-helm
+        --namespace nautobot
+        --set image.tag={{ nautobot_version }}
+        --set database.host={{ nautobot_db.host }}
+        --set database.port={{ nautobot_db.port }}
+        --set database.name={{ vault_database_name }}
+        --set redis.host={{ nautobot_redis.host }}
+        --set redis.port={{ nautobot_redis.port }}
+        --set ingress.enabled=true
+        --set ingress.host={{ ansible_host }}
+        --set web.replicas=2
+        --set worker.replicas=2
+        --set scheduler.replicas=1
+        --wait
+        --timeout=10m
+      register: helm_deploy
+
+    - name: Wait for Nautobot pods to be ready
+      ansible.builtin.command: >
+        kubectl wait --namespace nautobot
+        --for=condition=ready pod
+        --selector=app.kubernetes.io/name=nautobot
+        --timeout=600s
+      changed_when: false
+
+    - name: Get all pods status
+      ansible.builtin.command: kubectl get pods -n nautobot -o wide
+      register: pods_status
+      changed_when: false
+
+    - name: Get services
+      ansible.builtin.command: kubectl get svc -n nautobot
+      register: services
+      changed_when: false
+
+    - name: Get ingress
+      ansible.builtin.command: kubectl get ingress -n nautobot
+      register: ingress
+      changed_when: false
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "╔═══════════════════════════════════════════════════════════════╗"
+          - "║     ✅ PRODUCTION KUBERNETES DEPLOYMENT COMPLETE! ✅         ║"
+          - "╚═══════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 Cluster Information:"
+          - "  Master Node (Load Balancer): {{ ansible_host }}"
+          - "  Kubernetes Version: 1.28"
+          - "  CNI: Flannel"
+          - "  Ingress: Nginx (NodePort 30080/30443)"
+          - ""
+          - "🚀 Nautobot Deployment:"
+          - "  Namespace: nautobot"
+          - "  Web Replicas: 2 (on web-labeled nodes)"
+          - "  Worker Replicas: 2 (on worker-labeled nodes)"
+          - "  Scheduler Replicas: 1"
+          - ""
+          - "🌐 Access URLs:"
+          - "  HTTP:  http://{{ ansible_host }}:30080"
+          - "  HTTPS: https://{{ ansible_host }}:30443"
+          - "  (Or use master node IP directly)"
+          - ""
+          - "📦 External Services:"
+          - "  PostgreSQL: {{ nautobot_db.host }}:{{ nautobot_db.port }}"
+          - "  Redis: {{ nautobot_redis.host }}:{{ nautobot_redis.port }}"
+          - ""
+          - "🔍 Pods Status:"
+          - "{{ pods_status.stdout_lines }}"
+          - ""
+          - "📋 Useful Commands:"
+          - "  kubectl get all -n nautobot"
+          - "  kubectl logs -n nautobot -l app.kubernetes.io/name=nautobot"
+          - "  kubectl exec -it -n nautobot deploy/nautobot-web -- bash"
+          - "  helm list -n nautobot"
+          - ""
+          - "🔧 Management:"
+          - "  Scale: kubectl scale -n nautobot deployment/nautobot-web --replicas=4"
+          - "  Update: helm upgrade nautobot ./nautobot-helm -n nautobot"
+          - "  Rollback: helm rollback nautobot -n nautobot"

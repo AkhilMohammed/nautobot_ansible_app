@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nautobot-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+data:
+  nautobot_config.py: |
+    import os
+    from nautobot.core.settings import *
+    from nautobot.core.settings_funcs import is_truthy, parse_redis_connection
+    
+    # Basic Configuration
+    ALLOWED_HOSTS = {{ .Values.nautobot.allowedHosts | toJson }}
+    DEBUG = {{ .Values.nautobot.debug }}
+    
+    # Database Configuration
+    DATABASES = {
+        "default": {
+            "NAME": os.getenv("NAUTOBOT_DB_NAME", "{{ .Values.database.name }}"),
+            "USER": os.getenv("NAUTOBOT_DB_USER", "nautobot"),
+            "PASSWORD": os.getenv("NAUTOBOT_DB_PASSWORD", ""),
+            "HOST": os.getenv("NAUTOBOT_DB_HOST", "{{ .Values.database.host }}"),
+            "PORT": os.getenv("NAUTOBOT_DB_PORT", "{{ .Values.database.port }}"),
+            "ENGINE": "{{ .Values.database.engine }}",
+            "CONN_MAX_AGE": 300,
+            "OPTIONS": {"sslmode": "prefer"},
+        }
+    }
+    
+    # Redis Configuration
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "PASSWORD": os.getenv("NAUTOBOT_REDIS_PASSWORD", ""),
+            },
+        }
+    }
+    
+    # Celery Configuration
+    CELERY_BROKER_URL = f"redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+    CELERY_RESULT_BACKEND = f"redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/1"
+    
+    # Secret Key
+    SECRET_KEY = os.getenv("NAUTOBOT_SECRET_KEY", "")
+    
+    # Storage Configuration
+    MEDIA_ROOT = "/opt/nautobot/media"
+    STATIC_ROOT = "/opt/nautobot/static"
+    GIT_ROOT = "/opt/nautobot/git"
+    
+    # Logging
+    LOG_LEVEL = "{{ .Values.nautobot.logLevel }}"
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "normal": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+            },
+            "verbose": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s (%(module)s:%(funcName)s:%(lineno)d): %(message)s"
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": LOG_LEVEL,
+                "class": "logging.StreamHandler",
+                "formatter": "normal",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+        },
+    }
+    
+    # Metrics
+    METRICS_ENABLED = {{ .Values.nautobot.metricsEnabled }}
+    
+    # Session and CSRF
+    SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
+    CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
+    
+    # Time zone
+    TIME_ZONE = "UTC"
