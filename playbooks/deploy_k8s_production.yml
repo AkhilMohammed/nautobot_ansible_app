@@ -3,6 +3,63 @@
 # Fully automated: Installs K8s, Helm, Ingress, and deploys Nautobot
 # Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
 
+- name: Pre-flight Validation - System Requirements Check
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  tasks:
+    - name: Check minimum CPU cores (2 required)
+      ansible.builtin.assert:
+        that:
+          - ansible_processor_vcpus >= 2
+        fail_msg: "Insufficient CPU cores: {{ ansible_processor_vcpus }}. Minimum 2 cores required."
+        success_msg: "CPU check passed: {{ ansible_processor_vcpus }} cores available"
+
+    - name: Check minimum memory (2GB required)
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb >= 1800
+        fail_msg: "Insufficient memory: {{ ansible_memtotal_mb }}MB. Minimum 2GB required."
+        success_msg: "Memory check passed: {{ ansible_memtotal_mb }}MB available"
+
+    - name: Check disk space in root partition (10GB required)
+      ansible.builtin.shell: df -BG / | tail -1 | awk '{print $4}' | sed 's/G//'
+      register: disk_space
+      changed_when: false
+      failed_when: disk_space.stdout | int < 10
+
+    - name: Verify network connectivity to master node
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['k8s_control_plane'][0]].ansible_host }}"
+        port: 22
+        timeout: 10
+        state: started
+      when: inventory_hostname in groups['k8s_workers']
+
+    - name: Check if swap is disabled
+      ansible.builtin.shell: swapon --show
+      register: swap_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display swap warning if enabled
+      ansible.builtin.debug:
+        msg: "WARNING: Swap is enabled. Kubernetes requires swap to be disabled."
+      when: swap_check.stdout != ""
+
+    - name: Pre-flight validation summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ Pre-flight validation completed successfully"
+          - "   - CPU: {{ ansible_processor_vcpus }} cores"
+          - "   - Memory: {{ ansible_memtotal_mb }}MB"
+          - "   - Disk: {{ disk_space.stdout }}GB available"
+          - "   - Network: Connectivity verified"
+
 - name: Prepare all Kubernetes nodes
   hosts: k8s_control_plane,k8s_workers
   become: true
@@ -329,6 +386,41 @@
         timeout: 120
         state: started
 
+    - name: Wait for etcd to be healthy
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].status.phase}'
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: etcd_status
+      until: etcd_status.stdout == "Running"
+      retries: 20
+      delay: 5
+      changed_when: false
+      failed_when: false
+
+    - name: Verify etcd container is actually running
+      ansible.builtin.shell: |
+        crictl --runtime-endpoint unix:///run/containerd/containerd.sock ps | grep etcd | grep Running
+      register: etcd_container
+      until: etcd_container.rc == 0
+      retries: 15
+      delay: 5
+      changed_when: false
+
+    - name: Wait for all control plane pods to be running
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l tier=control-plane -o jsonpath='{.items[*].status.phase}' | grep -v -q "Pending\|Failed\|Unknown" && echo "Ready"
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: control_plane_status
+      until: control_plane_status.stdout == "Ready"
+      retries: 20
+      delay: 5
+      changed_when: false
+      failed_when: false
+
     - name: Wait for kubectl to be responsive
       ansible.builtin.command: kubectl cluster-info
       become_user: "{{ ansible_user }}"
@@ -336,7 +428,7 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       register: cluster_info
       until: cluster_info.rc == 0
-      retries: 12
+      retries: 15
       delay: 10
       changed_when: false
 
@@ -357,6 +449,30 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: flannel_check.rc != 0
 
+    - name: Wait for Flannel DaemonSet to be available
+      ansible.builtin.shell: |
+        kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.numberReady}'
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_ready
+      until: flannel_ready.stdout | int > 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Verify Flannel pods are running on master
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-flannel -o wide | grep onprem-k8s-master | grep Running
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_pod_check
+      until: flannel_pod_check.rc == 0
+      retries: 20
+      delay: 5
+      changed_when: false
+
     - name: Wait for master node to be Ready
       ansible.builtin.command: kubectl get nodes onprem-k8s-master -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
       become_user: "{{ ansible_user }}"
@@ -376,6 +492,72 @@
     - name: Save join command as fact
       ansible.builtin.set_fact:
         k8s_join_command: "{{ join_command.stdout }}"
+
+    - name: Create cluster-info directory for disaster recovery
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/cluster-backup"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+
+    - name: Save join command to file for disaster recovery
+      ansible.builtin.copy:
+        content: |
+          # Kubernetes Worker Join Command
+          # Generated: {{ ansible_date_time.iso8601 }}
+          # Master Node: {{ ansible_host }}
+          
+          {{ join_command.stdout }}
+          
+          # To join additional worker nodes, run this command as root on the new node
+          # Token is valid for 24 hours by default
+        dest: "/home/{{ ansible_user }}/cluster-backup/worker-join-command.sh"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Save kubeconfig for disaster recovery
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/cluster-backup/kubeconfig-backup.yaml"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Save cluster configuration summary
+      ansible.builtin.copy:
+        content: |
+          # Kubernetes Cluster Configuration
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          Cluster Name: production-k8s
+          Master Node: {{ ansible_host }}
+          Pod Network CIDR: 10.244.0.0/16
+          Service CIDR: 10.96.0.0/12
+          CNI: Flannel
+          Ingress: Nginx (NodePort 30080/30443)
+          
+          # To restore cluster access from this backup:
+          # 1. Copy kubeconfig-backup.yaml to ~/.kube/config
+          # 2. Verify: kubectl get nodes
+          
+          # To add new worker nodes:
+          # 1. Run worker-join-command.sh on the new node as root
+          # 2. Label the node: kubectl label nodes <node-name> workload=<web|worker>
+        dest: "/home/{{ ansible_user }}/cluster-backup/README.txt"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Display cluster backup location
+      ansible.builtin.debug:
+        msg:
+          - "💾 Cluster configuration backed up to: /home/{{ ansible_user }}/cluster-backup/"
+          - "   - worker-join-command.sh (for adding nodes)"
+          - "   - kubeconfig-backup.yaml (for cluster access)"
+          - "   - README.txt (recovery instructions)"
 
 - name: Join worker nodes to cluster
   hosts: k8s_workers
@@ -449,14 +631,59 @@
       ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
       when: not kubelet_conf_exists.stat.exists
       register: join_result
+      retries: 3
+      delay: 10
+      until: join_result.rc == 0
 
     - name: Display join result
       ansible.builtin.debug:
         msg: "{{ join_result.stdout_lines if join_result is defined and join_result.stdout_lines is defined else 'Node already joined' }}"
 
-    - name: Wait for node to be ready
-      pause:
-        seconds: 10
+    - name: Wait for kubelet to be active on worker
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+      register: kubelet_start
+      until: kubelet_start.status.ActiveState == "active"
+      retries: 10
+      delay: 5
+
+    - name: Wait for node to be registered in cluster
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o name
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: node_registered_check
+      until: node_registered_check.rc == 0
+      retries: 20
+      delay: 5
+      changed_when: false
+
+    - name: Wait for Flannel pod to be running on this worker
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-flannel -o wide --field-selector spec.nodeName={{ inventory_hostname }} | grep Running
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: worker_flannel_check
+      until: worker_flannel_check.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Wait for node to be Ready
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: worker_ready
+      until: worker_ready.stdout == "True"
+      retries: 30
+      delay: 10
+      changed_when: false
 
 - name: Configure node labels and taints
   hosts: k8s_control_plane
@@ -496,7 +723,7 @@
       register: registered_nodes
       until: |
         registered_nodes.stdout_lines | length >= 5
-      retries: 30
+      retries: 40
       delay: 10
       changed_when: false
 
@@ -510,7 +737,29 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       register: nodes_status
       until: "'NotReady' not in nodes_status.stdout"
+      retries: 40
+      delay: 10
+      changed_when: false
+
+    - name: Verify all Flannel pods are running
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-flannel -o wide | tail -n +2 | awk '{print $3}' | grep -v Running || true
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_pods_status
+      until: flannel_pods_status.stdout == ""
       retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Verify CoreDNS pods are running
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[*].status.phase}' | grep -v Running || echo "All Running"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: coredns_status
+      until: coredns_status.stdout == "All Running"
+      retries: 20
       delay: 10
       changed_when: false
 
@@ -551,6 +800,71 @@
         msg: "Worker node {{ item.item }}: {{ 'labeled' if item.rc == 0 else 'failed - ' + item.stderr }}"
       loop: "{{ worker_label_result.results }}"
       when: worker_label_result is defined
+
+- name: Kubernetes Cluster Health Validation
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Get cluster component status
+      ansible.builtin.command: kubectl get componentstatuses
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: component_status
+      changed_when: false
+      failed_when: false
+
+    - name: Get all nodes with detailed status
+      ansible.builtin.command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: all_nodes_status
+      changed_when: false
+
+    - name: Get control plane pods status
+      ansible.builtin.command: kubectl get pods -n kube-system -o wide
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: control_plane_pods
+      changed_when: false
+
+    - name: Get Flannel network pods status
+      ansible.builtin.command: kubectl get pods -n kube-flannel -o wide
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_pods
+      changed_when: false
+
+    - name: Verify pod network connectivity with a test pod
+      ansible.builtin.shell: |
+        kubectl run busybox-test --image=busybox:1.28 --restart=Never --rm -i --command -- nslookup kubernetes.default 2>&1 || echo "DNS test completed"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: network_test
+      changed_when: false
+      timeout: 30
+      failed_when: false
+
+    - name: Display cluster health summary
+      ansible.builtin.debug:
+        msg:
+          - "╔══════════════════════════════════════════════════════════════╗"
+          - "║          🏥 KUBERNETES CLUSTER HEALTH CHECK 🏥              ║"
+          - "╚══════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 Cluster Nodes:"
+          - "{{ all_nodes_status.stdout_lines }}"
+          - ""
+          - "🔧 Control Plane Pods:"
+          - "{{ control_plane_pods.stdout_lines }}"
+          - ""
+          - "🌐 Network Pods (Flannel):"
+          - "{{ flannel_pods.stdout_lines }}"
+          - ""
+          - "✅ Cluster is healthy and ready for application deployment!"
 
 - name: Install Helm on master node
   hosts: k8s_control_plane
@@ -786,7 +1100,8 @@
           - "📊 Cluster Information:"
           - "  Master Node (Load Balancer): {{ ansible_host }}"
           - "  Kubernetes Version: 1.28"
-          - "  CNI: Flannel"
+          - "  CNI: Flannel (10.244.0.0/16)"
+          - "  Service CIDR: 10.96.0.0/12"
           - "  Ingress: Nginx (NodePort 30080/30443)"
           - ""
           - "🚀 Nautobot Deployment:"
@@ -798,22 +1113,68 @@
           - "🌐 Access URLs:"
           - "  HTTP:  http://{{ ansible_host }}:30080"
           - "  HTTPS: https://{{ ansible_host }}:30443"
-          - "  (Or use master node IP directly)"
+          - "  (Access via master node IP or any worker node IP)"
           - ""
           - "📦 External Services:"
           - "  PostgreSQL: {{ nautobot_db.host }}:{{ nautobot_db.port }}"
           - "  Redis: {{ nautobot_redis.host }}:{{ nautobot_redis.port }}"
           - ""
-          - "🔍 Pods Status:"
+          - "🔍 Current Pod Status:"
           - "{{ pods_status.stdout_lines }}"
           - ""
-          - "📋 Useful Commands:"
-          - "  kubectl get all -n nautobot"
-          - "  kubectl logs -n nautobot -l app.kubernetes.io/name=nautobot"
-          - "  kubectl exec -it -n nautobot deploy/nautobot-web -- bash"
-          - "  helm list -n nautobot"
+          - "📋 Essential Commands:"
+          - "  Monitor: kubectl get all -n nautobot"
+          - "  Logs: kubectl logs -n nautobot -l app.kubernetes.io/name=nautobot -f"
+          - "  Shell: kubectl exec -it -n nautobot deploy/nautobot-web -- bash"
+          - "  Describe: kubectl describe pod -n nautobot <pod-name>"
           - ""
-          - "🔧 Management:"
-          - "  Scale: kubectl scale -n nautobot deployment/nautobot-web --replicas=4"
-          - "  Update: helm upgrade nautobot ./nautobot-helm -n nautobot"
+          - "🔧 Management Operations:"
+          - "  Scale Web: kubectl scale -n nautobot deployment/nautobot-web --replicas=4"
+          - "  Scale Workers: kubectl scale -n nautobot deployment/nautobot-worker --replicas=4"
+          - "  Update: helm upgrade nautobot ./nautobot-helm -n nautobot --wait"
           - "  Rollback: helm rollback nautobot -n nautobot"
+          - "  Status: helm status nautobot -n nautobot"
+          - ""
+          - "🔍 Troubleshooting:"
+          - "  Check Events: kubectl get events -n nautobot --sort-by='.lastTimestamp'"
+          - "  Node Status: kubectl get nodes -o wide"
+          - "  Pod Details: kubectl get pods -n nautobot -o wide"
+          - "  Ingress Status: kubectl get ingress -n nautobot"
+          - "  Service Endpoints: kubectl get endpoints -n nautobot"
+          - ""
+          - "📊 Monitoring & Health:"
+          - "  Cluster Health: kubectl get componentstatuses"
+          - "  Node Resources: kubectl top nodes (requires metrics-server)"
+          - "  Pod Resources: kubectl top pods -n nautobot"
+          - "  Network Policies: kubectl get networkpolicies -n nautobot"
+          - ""
+          - "🔐 Security Considerations:"
+          - "  ⚠️  Secrets are stored in Kubernetes secrets - rotate regularly"
+          - "  ⚠️  TLS is configured via Ingress - ensure certificates are valid"
+          - "  ⚠️  Review and apply NetworkPolicies for pod isolation"
+          - "  ⚠️  Enable RBAC policies for fine-grained access control"
+          - ""
+          - "💾 Backup & Recovery:"
+          - "  Backup etcd: kubectl -n kube-system get pods -l component=etcd"
+          - "  Backup configs: kubectl get all -n nautobot -o yaml > nautobot-backup.yaml"
+          - "  Export Helm values: helm get values nautobot -n nautobot > values.yaml"
+          - ""
+          - "🎯 Production Readiness Checklist:"
+          - "  ✅ All nodes are in Ready state"
+          - "  ✅ All pods are running and healthy"
+          - "  ✅ Ingress controller is accessible"
+          - "  ✅ External database and Redis are connected"
+          - "  ⚠️  TODO: Configure persistent storage for logs"
+          - "  ⚠️  TODO: Set up monitoring (Prometheus/Grafana)"
+          - "  ⚠️  TODO: Configure backup strategy"
+          - "  ⚠️  TODO: Set up log aggregation (ELK/Loki)"
+          - "  ⚠️  TODO: Configure resource requests and limits"
+          - ""
+          - "📚 Documentation:"
+          - "  Kubernetes: https://kubernetes.io/docs/"
+          - "  Helm: https://helm.sh/docs/"
+          - "  Nautobot: https://nautobot.readthedocs.io/"
+          - ""
+          - "═══════════════════════════════════════════════════════════════"
+          - "🎉 Deployment completed successfully! Happy networking! 🎉"
+          - "═══════════════════════════════════════════════════════════════"
