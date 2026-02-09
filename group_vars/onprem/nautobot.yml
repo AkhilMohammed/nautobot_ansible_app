@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Force worker re-join if not registered in cluster - retest
+#Trigger: Production-ready deployment with comprehensive health checks and validation
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
