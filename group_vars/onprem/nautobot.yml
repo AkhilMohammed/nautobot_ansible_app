@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Retry: Using chrony burst mode for aggressive time sync
+#Retry: Per-worker time sync before join + API health check
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
