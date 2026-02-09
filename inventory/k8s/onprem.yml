@@ -8,12 +8,12 @@ all:
     k8s_control_plane:
       hosts:
         onprem-k8s-master:
-          ansible_host: 192.168.1.10  # REPLACE - Master & Ingress LoadBalancer
-          ansible_user: your_username  # REPLACE with your SSH username
+          ansible_host: 172.17.152.102  # REPLACE - Master & Ingress LoadBalancer
+          ansible_user: ubuntu  # REPLACE with your SSH username
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
           deployment_type: k8s
-          kubeconfig_path: "/home/your_username/.kube/config"
+          kubeconfig_path: "/home/ubuntu/.kube/config"
           node_role: master
           install_ingress: true  # Master will run Nginx Ingress Controller
 
@@ -22,15 +22,15 @@ all:
       hosts:
         # Web Nodes - Will run Nautobot web pods
         onprem-k8s-web-01:
-          ansible_host: 192.168.1.11  # REPLACE - Web worker node
-          ansible_user: your_username
+          ansible_host: 172.17.152.103  # REPLACE - Web worker node
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           node_role: web
           node_labels:
             workload: web
         onprem-k8s-web-02:
-          ansible_host: 192.168.1.12  # REPLACE - Web worker node
-          ansible_user: your_username
+          ansible_host: 172.17.152.104  # REPLACE - Web worker node
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           node_role: web
           node_labels:
@@ -38,15 +38,15 @@ all:
         
         # Celery Worker Nodes - Will run Nautobot celery worker pods
         onprem-k8s-worker-01:
-          ansible_host: 192.168.1.13  # REPLACE - Celery worker node
-          ansible_user: your_username
+          ansible_host: 172.17.152.105  # REPLACE - Celery worker node
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           node_role: worker
           node_labels:
             workload: worker
         onprem-k8s-worker-02:
-          ansible_host: 192.168.1.14  # REPLACE - Celery worker node
-          ansible_user: your_username
+          ansible_host: 172.17.152.106  # REPLACE - Celery worker node
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           node_role: worker
           node_labels:
@@ -56,8 +56,8 @@ all:
     postgres:
       hosts:
         onprem-postgres-01:
-          ansible_host: 192.168.1.16  # PostgreSQL VM
-          ansible_user: your_username
+          ansible_host: 172.17.152.107  # PostgreSQL VM
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
 
@@ -65,8 +65,8 @@ all:
     redis:
       hosts:
         onprem-redis-01:
-          ansible_host: 192.168.1.17  # Redis VM
-          ansible_user: your_username
+          ansible_host: 172.17.152.108  # Redis VM
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
 
@@ -74,8 +74,8 @@ all:
     github_runner:
       hosts:
         onprem-runner-01:
-          ansible_host: 192.168.1.18  # CI/CD Runner
-          ansible_user: your_username
+          ansible_host: 172.17.152.109  # CI/CD Runner
+          ansible_user: ubuntu
           ansible_ssh_pass: "{{ vault_ssh_password }}"
           deploy_env: onprem
 
@@ -85,7 +85,7 @@ all:
         onprem-k8s-master:
       vars:
         environment: onprem
-        kubeconfig_path: "/home/your_username/.kube/config"
+        kubeconfig_path: "/home/ubuntu/.kube/config"
 
   vars:
     ansible_python_interpreter: /usr/bin/python3
