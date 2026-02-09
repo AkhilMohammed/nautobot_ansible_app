@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Full Setup Complete: SSH keys + passwordless sudo configured on all VMs
+#Full deployment enabled: Running complete K8s setup and Nautobot install
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
