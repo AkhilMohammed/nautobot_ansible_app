@@ -219,6 +219,26 @@
         remote_src: yes
         mode: '0600'
 
+    - name: Wait for API server to be ready
+      ansible.builtin.wait_for:
+        host: 172.17.152.109
+        port: 6443
+        delay: 5
+        timeout: 120
+        state: started
+      when: not k8s_initialized.stat.exists
+
+    - name: Wait for kubectl to be responsive
+      ansible.builtin.command: kubectl cluster-info
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: cluster_info
+      until: cluster_info.rc == 0
+      retries: 12
+      delay: 10
+      when: not k8s_initialized.stat.exists
+
     - name: Install Flannel CNI network plugin
       ansible.builtin.command: >
         kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
