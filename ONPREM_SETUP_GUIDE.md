@@ -8,7 +8,7 @@ This guide will help you deploy Nautobot on 8 on-premises VMs with automated Git
 
 | VM # | Role | Hostname | IP Address (Example) | Purpose |
 |------|------|----------|---------------------|---------|
-| 1 | GitLab Runner | onprem-runner-01 | 192.168.1.18 | CI/CD Pipeline execution |
+| 1 | GitHub Runner | onprem-runner-01 | 192.168.1.18 | CI/CD Pipeline execution |
 | 2 | Web Node 1 | onprem-nautobot-web-01 | 192.168.1.11 | Nautobot web interface |
 | 3 | Web Node 2 | onprem-nautobot-web-02 | 192.168.1.12 | Nautobot web interface (HA) |
 | 4 | Worker 1 | onprem-nautobot-worker-01 | 192.168.1.13 | Celery worker |
@@ -110,47 +110,50 @@ ansible-playbook -i inventory/vm/onprem.yml \
   --ask-vault-pass
 ```
 
-### Step 7: Setup GitLab Runner (for CI/CD)
+### Step 7: Setup GitHub Actions Runner (for CI/CD)
 
 ```bash
 ansible-playbook -i inventory/vm/onprem.yml \
-  playbooks/setup_gitlab_runner.yml \
+  playbooks/setup_github_runner.yml \
   --ask-vault-pass
 ```
 
 ---
 
-## 🔄 Using GitLab CI/CD Pipeline
+## 🔄 Using GitHub Actions CI/CD Pipeline
 
-### Get GitLab Runner Token
+### Get GitHub Runner Token
 
-1. Go to your GitLab project
-2. Navigate to: **Settings** → **CI/CD** → **Runners**
-3. Click **"New project runner"**
-4. Copy the registration token
-5. Add it to your `group_vars/onprem/vault.yml` as `vault_gitlab_runner_token`
+1. Go to your GitHub repository
+2. Navigate to: **Settings** → **Actions** → **Runners**
+3. Click **"New self-hosted runner"**
+4. Follow the instructions to get the registration token
+5. SSH to your runner VM and complete the registration:
+   ```bash
+   sudo su - github-runner
+   cd ~/actions-runner
+   ./config.sh --url https://github.com/YOUR_USERNAME/YOUR_REPO --token YOUR_TOKEN --labels onprem,self-hosted
+   sudo ~/actions-runner/svc.sh install github-runner
+   sudo ~/actions-runner/svc.sh start
+   ```
 
 ### Configure Pipeline
 
-The `.gitlab-ci.yml` file is already configured. To use it:
+The `.github/workflows/deploy-onprem.yml` file is already configured. To use it:
 
 1. **Copy vault password to runner VM:**
 ```bash
 # On your runner VM
-sudo su - gitlab-runner
-echo "your_vault_password" > /home/gitlab-runner/vault_pass.txt
-chmod 600 /home/gitlab-runner/vault_pass.txt
+sudo su - github-runner
+echo "your_vault_password" > ~/.vault_pass
+chmod 600 ~/.vault_pass
 ```
 
-2. **Update `.gitlab-ci.yml` vault password path:**
-Edit `.gitlab-ci.yml` and change:
-```yaml
---vault-password-file /path/to/vault_pass.txt
-```
-to:
-```yaml
---vault-password-file /home/gitlab-runner/vault_pass.txt
-```
+2. **Add GitHub Secret:**
+   - Go to: **Repository Settings** → **Secrets and variables** → **Actions**
+   - Click **"New repository secret"**
+   - Name: `ANSIBLE_VAULT_PASSWORD_FILE`
+   - Value: `/home/github-runner/.vault_pass`
 
 3. **Commit and push:**
 ```bash
@@ -159,10 +162,11 @@ git commit -m "Configure on-prem deployment"
 git push origin feat/onprem-deployment
 ```
 
-4. **Run pipeline in GitLab:**
-   - Go to: **CI/CD** → **Pipelines**
-   - Click **"Run pipeline"**
-   - Select stages to run manually
+4. **Run workflow in GitHub:**
+   - Go to: **Actions** tab
+   - Select **"Deploy Nautobot On-Premises"** workflow
+   - Click **"Run workflow"**
+   - Select deployment stage (validate, infrastructure, application, or full_stack)
 
 ---
 
@@ -176,7 +180,8 @@ git push origin feat/onprem-deployment
 | **PostgreSQL IP** | Config file | `group_vars/onprem/nautobot.yml` (line ~28) |
 | **Redis IP** | Config file | `group_vars/onprem/nautobot.yml` (line ~35) |
 | **Allowed Hosts** | Config file | `group_vars/onprem/nautobot.yml` (lines ~45-47) |
-| **GitLab Runner Token** | Vault file | `group_vars/onprem/vault.yml` |
+| **GitHub Token** | Vault file | `group_vars/onprem/vault.yml` |
+| **GitHub Repo Info** | Vault file | `group_vars/onprem/vault.yml` |
 
 ---
 
@@ -273,10 +278,13 @@ ansible -i inventory/vm/onprem.yml postgres -a "cat /etc/postgresql/*/main/postg
 ### GitLab Runner not picking up jobs
 ```bash
 # Check runner status
-gitlab-runner status
+sudo systemctl status actions.runner.*
 
-# Re-register runner
-gitlab-runner register
+# Check runner logs
+journalctl -u actions.runner.* -f
+
+# Restart runner
+sudo systemctl restart actions.runner.*
 ```
 
 ---

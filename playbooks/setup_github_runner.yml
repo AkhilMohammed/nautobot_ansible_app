@@ -1,0 +1,158 @@
+---
+# Playbook to Setup GitHub Actions Self-Hosted Runner on On-Premises VM
+# Usage: ansible-playbook -i inventory/vm/onprem.yml playbooks/setup_github_runner.yml --ask-vault-pass
+
+- name: Install and Configure GitHub Actions Runner
+  hosts: github_runner
+  become: true
+  become_method: sudo
+  gather_facts: true
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/onprem/vault.yml"
+
+  vars:
+    github_runner_version: "2.311.0"  # Update to latest version as needed
+    github_runner_user: "github-runner"
+    github_runner_home: "/home/{{ github_runner_user }}"
+    github_runner_dir: "{{ github_runner_home }}/actions-runner"
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - git
+          - jq
+          - tar
+          - python3
+          - python3-pip
+          - python3-venv
+          - ansible
+          - libicu-dev
+        state: present
+        update_cache: yes
+
+    - name: Create GitHub runner user
+      ansible.builtin.user:
+        name: "{{ github_runner_user }}"
+        comment: "GitHub Actions Runner"
+        shell: /bin/bash
+        create_home: yes
+        home: "{{ github_runner_home }}"
+
+    - name: Create runner directory
+      ansible.builtin.file:
+        path: "{{ github_runner_dir }}"
+        state: directory
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_user }}"
+        mode: '0755'
+
+    - name: Check if runner is already installed
+      ansible.builtin.stat:
+        path: "{{ github_runner_dir }}/config.sh"
+      register: runner_installed
+
+    - name: Download GitHub Actions Runner
+      ansible.builtin.get_url:
+        url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+        dest: "/tmp/actions-runner.tar.gz"
+        mode: '0644'
+      when: not runner_installed.stat.exists
+
+    - name: Extract GitHub Actions Runner
+      ansible.builtin.unarchive:
+        src: "/tmp/actions-runner.tar.gz"
+        dest: "{{ github_runner_dir }}"
+        remote_src: yes
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_user }}"
+      when: not runner_installed.stat.exists
+
+    - name: Install runner dependencies
+      ansible.builtin.command:
+        cmd: "{{ github_runner_dir }}/bin/installdependencies.sh"
+      when: not runner_installed.stat.exists
+
+    - name: Check if runner is already configured
+      ansible.builtin.stat:
+        path: "{{ github_runner_dir }}/.runner"
+      register: runner_configured
+
+    - name: Display runner configuration instructions
+      ansible.builtin.debug:
+        msg:
+          - "ℹ️  GitHub Runner downloaded successfully!"
+          - ""
+          - "To register the runner, run these commands on the runner VM:"
+          - ""
+          - "1. Get your runner token from GitHub:"
+          - "   - Go to: https://github.com/{{ github_repo_owner }}/{{ github_repo_name }}/settings/actions/runners/new"
+          - "   - Or: Repository Settings → Actions → Runners → New self-hosted runner"
+          - ""
+          - "2. SSH to the runner VM and run:"
+          - "   sudo su - {{ github_runner_user }}"
+          - "   cd {{ github_runner_dir }}"
+          - "   ./config.sh --url https://github.com/{{ github_repo_owner }}/{{ github_repo_name }} --token YOUR_RUNNER_TOKEN --labels onprem,self-hosted"
+          - "   ./run.sh"
+          - ""
+          - "3. Or register as a service (recommended):"
+          - "   sudo {{ github_runner_dir }}/svc.sh install {{ github_runner_user }}"
+          - "   sudo {{ github_runner_dir }}/svc.sh start"
+      when: not runner_configured.stat.exists
+
+    - name: Install runner as systemd service (if already configured)
+      ansible.builtin.command:
+        cmd: "{{ github_runner_dir }}/svc.sh install {{ github_runner_user }}"
+      args:
+        creates: /etc/systemd/system/actions.runner.*
+      when: runner_configured.stat.exists
+      become: yes
+
+    - name: Start GitHub Actions runner service (if configured)
+      ansible.builtin.systemd:
+        name: "actions.runner.{{ github_repo_owner }}-{{ github_repo_name }}.{{ github_runner_name | default('default') }}.service"
+        state: started
+        enabled: yes
+      when: runner_configured.stat.exists
+      ignore_errors: yes
+
+    - name: Add github-runner user to sudo group
+      ansible.builtin.user:
+        name: "{{ github_runner_user }}"
+        groups: sudo
+        append: yes
+
+    - name: Configure passwordless sudo for github-runner
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers.d/github-runner
+        line: '{{ github_runner_user }} ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Create vault password file location
+      ansible.builtin.file:
+        path: "{{ github_runner_home }}"
+        state: directory
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_user }}"
+        mode: '0700'
+
+    - name: Display final setup instructions
+      ansible.builtin.debug:
+        msg:
+          - "✅ GitHub Actions Runner setup completed!"
+          - ""
+          - "Next steps:"
+          - "1. Create vault password file on runner:"
+          - "   echo 'your_vault_password' | sudo tee {{ github_runner_home }}/.vault_pass"
+          - "   sudo chown {{ github_runner_user }}:{{ github_runner_user }} {{ github_runner_home }}/.vault_pass"
+          - "   sudo chmod 600 {{ github_runner_home }}/.vault_pass"
+          - ""
+          - "2. Add GitHub Secret 'ANSIBLE_VAULT_PASSWORD_FILE':"
+          - "   Value: {{ github_runner_home }}/.vault_pass"
+          - ""
+          - "3. Runner is ready to execute GitHub Actions workflows!"
+          - "   Labels: onprem, self-hosted"

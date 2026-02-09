@@ -27,11 +27,12 @@ vault_nautobot_superuser_username: "admin"
 vault_nautobot_superuser_password: "your_nautobot_admin_password_here"
 vault_nautobot_superuser_email: "admin@example.com"
 
-# GitLab Runner Token (get from your GitLab project settings)
-vault_gitlab_runner_token: "your_gitlab_runner_registration_token_here"
+# GitHub Personal Access Token (for private repos and runner registration)
+vault_github_token: "your_github_personal_access_token_here"
 
-# Optional: GitHub/GitLab Personal Access Token for private repos
-vault_git_token: "your_git_personal_access_token_here"
+# GitHub Repository Information
+vault_github_repo_owner: "your_github_username_or_org"
+vault_github_repo_name: "your_repo_name"
 
 # Optional: Additional API keys or tokens
 vault_smtp_password: "your_email_smtp_password_if_needed"

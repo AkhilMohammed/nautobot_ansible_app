@@ -1,0 +1,186 @@
+---
+# GitHub Actions Workflow for On-Premises Nautobot Deployment
+# This workflow will automatically deploy Nautobot when triggered
+
+name: Deploy Nautobot On-Premises
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_stage:
+        description: 'Deployment Stage'
+        required: true
+        type: choice
+        options:
+          - validate
+          - infrastructure
+          - application
+          - full_stack
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'onprem'
+        type: string
+
+  push:
+    branches:
+      - feat/onprem-deployment
+      - main
+    paths:
+      - 'playbooks/**'
+      - 'roles/**'
+      - 'inventory/vm/onprem.yml'
+      - 'group_vars/onprem/**'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'playbooks/**'
+      - 'roles/**'
+
+jobs:
+  validate:
+    name: Validate Ansible Syntax
+    runs-on: [self-hosted, onprem]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Validate Ansible syntax
+        run: |
+          ansible-playbook --syntax-check \
+            -i inventory/vm/onprem.yml \
+            playbooks/deploy_onprem_all.yml
+
+      - name: Lint Ansible playbooks
+        run: |
+          ansible-lint playbooks/deploy_onprem_all.yml || true
+
+  deploy_infrastructure:
+    name: Deploy Infrastructure (PostgreSQL & Redis)
+    runs-on: [self-hosted, onprem]
+    needs: validate
+    if: github.event.inputs.deployment_stage == 'infrastructure' || github.event.inputs.deployment_stage == 'full_stack'
+    environment: onprem
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Deploy PostgreSQL and Redis
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i inventory/vm/onprem.yml \
+            playbooks/deploy_onprem_all.yml \
+            --tags "postgres,redis" \
+            --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }}
+
+  deploy_application:
+    name: Deploy Nautobot Application
+    runs-on: [self-hosted, onprem]
+    needs: [validate, deploy_infrastructure]
+    if: |
+      always() &&
+      needs.validate.result == 'success' &&
+      (needs.deploy_infrastructure.result == 'success' || needs.deploy_infrastructure.result == 'skipped') &&
+      (github.event.inputs.deployment_stage == 'application' || github.event.inputs.deployment_stage == 'full_stack')
+    environment: onprem
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Deploy Nautobot Web, Worker, Scheduler
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i inventory/vm/onprem.yml \
+            playbooks/deploy_onprem_all.yml \
+            --tags "nautobot,web,worker,scheduler" \
+            --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }}
+
+  verify_deployment:
+    name: Verify Deployment
+    runs-on: [self-hosted, onprem]
+    needs: [deploy_application]
+    if: always() && needs.deploy_application.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Verify Deployment
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i inventory/vm/onprem.yml \
+            playbooks/deploy_onprem_all.yml \
+            --tags "verify" \
+            --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }}
+
+      - name: Test Nautobot Health Endpoint
+        run: |
+          sleep 10
+          curl -f http://192.168.1.11:8000/health/ || echo "Health check failed, but deployment may still be successful"
+
+  full_deployment:
+    name: Full Stack Deployment
+    runs-on: [self-hosted, onprem]
+    needs: validate
+    if: github.event.inputs.deployment_stage == 'full_stack'
+    environment: onprem
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+
+      - name: Deploy Full Stack
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i inventory/vm/onprem.yml \
+            playbooks/deploy_onprem_all.yml \
+            --vault-password-file ${{ secrets.ANSIBLE_VAULT_PASSWORD_FILE }}

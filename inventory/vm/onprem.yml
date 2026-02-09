@@ -66,8 +66,8 @@ all:
           deploy_env: onprem
           deployment_type: vm
 
-    # GitLab/GitHub Runner - 1 VM for CI/CD Pipeline
-    gitlab_runner:
+    # GitHub Actions Runner - 1 VM for CI/CD Pipeline
+    github_runner:
       hosts:
         onprem-runner-01:
           ansible_host: 192.168.1.18  # REPLACE with your VM IP

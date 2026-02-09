@@ -67,6 +67,8 @@ nautobot_services:
 # Load Balancer Configuration (if you have one)
 # load_balancer_ip: "192.168.1.10"  # REPLACE if you have a load balancer
 
-# GitLab Runner Configuration
-gitlab_runner_registration_token: "{{ vault_gitlab_runner_token }}"
-gitlab_url: "https://gitlab.com"  # REPLACE with your GitLab instance URL
+# GitHub Runner Configuration
+github_token: "{{ vault_github_token }}"
+github_repo_owner: "{{ vault_github_repo_owner }}"
+github_repo_name: "{{ vault_github_repo_name }}"
+github_runner_name: "onprem-runner-01"  # Name for the self-hosted runner
