@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration
-#Full deployment enabled: Running complete K8s setup and Nautobot install
+#Retry deployment with API server readiness check before Flannel CNI
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
