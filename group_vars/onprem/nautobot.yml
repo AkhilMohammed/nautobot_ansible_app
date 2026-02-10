@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Volume unmount and join fallback fixes
+#Trigger: Fix API server check - use IP instead of hostname
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
