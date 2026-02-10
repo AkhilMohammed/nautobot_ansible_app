@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Disable kubelet + preflight bypass
+#Trigger: Complete system cleanup at start
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

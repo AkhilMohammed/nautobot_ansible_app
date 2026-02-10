@@ -3,6 +3,143 @@
 # Fully automated: Installs K8s, Helm, Ingress, and deploys Nautobot
 # Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
 
+- name: COMPLETE SYSTEM CLEANUP - Start Fresh
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Display cleanup start
+      ansible.builtin.debug:
+        msg: "🧹 Starting complete system cleanup for pristine deployment..."
+
+    - name: Stop kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+      ignore_errors: yes
+
+    - name: Stop containerd service
+      ansible.builtin.systemd:
+        name: containerd
+        state: stopped
+      ignore_errors: yes
+
+    - name: Kill all Kubernetes and container processes
+      ansible.builtin.shell: |
+        pkill -9 kubelet || true
+        pkill -9 kube-proxy || true
+        pkill -9 kube-apiserver || true
+        pkill -9 kube-controller || true
+        pkill -9 kube-scheduler || true
+        pkill -9 etcd || true
+        pkill -9 containerd || true
+        pkill -9 containerd-shim || true
+        fuser -k 6443/tcp || true
+        fuser -k 10250/tcp || true
+        fuser -k 10251/tcp || true
+        fuser -k 10252/tcp || true
+        fuser -k 2379/tcp || true
+        fuser -k 2380/tcp || true
+        sleep 3
+      ignore_errors: yes
+
+    - name: Unmask kubelet if masked
+      ansible.builtin.systemd:
+        name: kubelet
+        masked: no
+      ignore_errors: yes
+
+    - name: Disable kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: no
+      ignore_errors: yes
+
+    - name: Reset Kubernetes with kubeadm
+      ansible.builtin.command: kubeadm reset -f --cleanup-tmp-dir
+      register: kubeadm_reset
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Unmount all kubelet and containerd mounts
+      ansible.builtin.shell: |
+        for mount in $(mount | grep -E 'kubelet|containerd|kubernetes' | awk '{print $3}' | sort -r); do
+          umount -f "$mount" 2>/dev/null || true
+        done
+        sleep 2
+      ignore_errors: yes
+
+    - name: Remove ALL Kubernetes directories and files
+      ansible.builtin.shell: |
+        rm -rf /etc/kubernetes
+        rm -rf /var/lib/kubelet
+        rm -rf /var/lib/etcd
+        rm -rf /var/lib/containerd
+        rm -rf /etc/cni/net.d
+        rm -rf /var/lib/calico
+        rm -rf /var/lib/cni
+        rm -rf /opt/cni
+        rm -rf /run/flannel
+        rm -rf /var/run/calico
+        rm -rf /var/run/kubernetes
+        rm -rf ~/.kube
+        rm -rf /root/.kube
+        rm -rf /tmp/kubeadm-*
+        rm -rf /tmp/kube*
+      ignore_errors: yes
+
+    - name: Remove CNI network interfaces
+      ansible.builtin.shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        ip link delete tunl0 2>/dev/null || true
+        ip link delete vxlan.calico 2>/dev/null || true
+        for iface in $(ip link | grep -E 'veth|cali' | awk -F: '{print $2}' | tr -d ' '); do
+          ip link delete $iface 2>/dev/null || true
+        done
+      ignore_errors: yes
+
+    - name: Flush iptables rules
+      ansible.builtin.shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      ignore_errors: yes
+
+    - name: Clean containerd data
+      ansible.builtin.shell: |
+        rm -rf /var/lib/containerd/*
+        rm -rf /run/containerd/*
+      ignore_errors: yes
+
+    - name: Restart containerd for clean state
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+      ignore_errors: yes
+
+    - name: Wait for containerd to stabilize
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Verify cleanup - check critical directories removed
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: cleanup_verification
+      loop:
+        - /etc/kubernetes
+        - /var/lib/kubelet
+        - /var/lib/etcd
+      ignore_errors: yes
+
+    - name: Display cleanup results
+      ansible.builtin.debug:
+        msg: "✅ System cleanup complete - all nodes ready for fresh deployment"
+
 - name: Pre-flight Validation - System Requirements Check
   hosts: k8s_control_plane,k8s_workers
   become: true
