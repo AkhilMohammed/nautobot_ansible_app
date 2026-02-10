@@ -707,39 +707,44 @@
       ansible.builtin.debug:
         msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if (node_registered is defined and node_registered.rc == 0) else 'not registered or API server unavailable' }}"
 
-    - name: Stop kubelet service before cleanup
+    - name: FORCE CLEANUP - Stop kubelet service before cleanup
       ansible.builtin.service:
         name: kubelet
         state: stopped
-      when: (node_registered is not defined) or (node_registered.rc != 0)
       ignore_errors: yes
 
-    - name: Unmount all kubelet volumes before cleanup
+    - name: FORCE CLEANUP - Stop containerd to release all locks
+      ansible.builtin.service:
+        name: containerd
+        state: stopped
+      ignore_errors: yes
+
+    - name: FORCE CLEANUP - Kill any remaining processes
       ansible.builtin.shell: |
-        # Unmount all volumes under /var/lib/kubelet
+        pkill -9 kubelet || true
+        pkill -9 containerd || true
+        fuser -k 10250/tcp || true
+        sleep 3
+      ignore_errors: yes
+
+    - name: FORCE CLEANUP - Unmount all kubelet volumes
+      ansible.builtin.shell: |
         for mount in $(mount | grep '/var/lib/kubelet' | awk '{print $3}' | sort -r); do
           umount -f "$mount" 2>/dev/null || true
         done
-        sleep 1
-      when: (node_registered is not defined) or (node_registered.rc != 0)
-      ignore_errors: yes
-
-    - name: Kill any process using port 10250
-      ansible.builtin.shell: |
-        fuser -k 10250/tcp || true
-        killall kubelet || true
+        for mount in $(mount | grep '/var/lib/containerd' | awk '{print $3}' | sort -r); do
+          umount -f "$mount" 2>/dev/null || true
+        done
         sleep 2
-      when: (node_registered is not defined) or (node_registered.rc != 0)
       ignore_errors: yes
 
-    - name: Run kubeadm reset to clean up node state
+    - name: FORCE CLEANUP - Run kubeadm reset
       ansible.builtin.command: kubeadm reset -f --cleanup-tmp-dir
-      when: (node_registered is not defined) or (node_registered.rc != 0)
       register: reset_result
       failed_when: false
       ignore_errors: yes
 
-    - name: Force remove Kubernetes directories with rm -rf
+    - name: FORCE CLEANUP - Remove ALL Kubernetes state
       ansible.builtin.shell: |
         rm -rf /etc/kubernetes
         rm -rf /var/lib/kubelet
@@ -749,65 +754,51 @@
         rm -rf /opt/cni
         rm -rf /run/flannel
         rm -rf /var/run/calico
-      when: (node_registered is not defined) or (node_registered.rc != 0)
+        rm -rf ~/.kube
+        rm -rf /root/.kube
       ignore_errors: yes
 
-    - name: Check if kubelet.conf exists after cleanup
+    - name: FORCE CLEANUP - Restart containerd with clean state
+      ansible.builtin.service:
+        name: containerd
+        state: restarted
+      retries: 3
+      delay: 5
+
+    - name: Wait for containerd to be fully ready
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Verify cleanup - Check critical files removed
       ansible.builtin.stat:
-        path: /etc/kubernetes/kubelet.conf
-      register: kubelet_conf_exists
+        path: "{{ item }}"
+      register: cleanup_check
+      loop:
+        - /etc/kubernetes/kubelet.conf
+        - /etc/kubernetes/pki/ca.crt
+        - /var/lib/kubelet/config.yaml
+      failed_when: false
 
-    - name: Force remove stubborn files if still present
-      ansible.builtin.shell: |
-        if [ -f /etc/kubernetes/kubelet.conf ]; then
-          rm -f /etc/kubernetes/kubelet.conf
-        fi
-        if [ -d /etc/kubernetes ]; then
-          rm -rf /etc/kubernetes
-        fi
-        if [ -d /var/lib/kubelet ]; then
-          rm -rf /var/lib/kubelet  
-        fi
-      when: kubelet_conf_exists.stat.exists
-      ignore_errors: yes
-
-    - name: Final verification of cleanup
-      ansible.builtin.stat:
-        path: /etc/kubernetes/kubelet.conf
-      register: final_check
-
-    - name: Display cleanup status
+    - name: Display cleanup verification
       ansible.builtin.debug:
-        msg: "{{ '✅ Cleanup successful' if not final_check.stat.exists else '⚠️  Warning: Some files remain but will attempt join with --ignore-preflight-errors' }}"
+        msg: "Cleanup status: {{ 'All clean' if cleanup_check.results | selectattr('stat.exists', 'equalto', true) | list | length == 0 else 'Some files remain but proceeding' }}"
 
     - name: Wait for API server to be responsive before join
       ansible.builtin.wait_for:
-        host: "{{ groups['k8s_control_plane'][0] }}"
+        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
         port: 6443
         timeout: 60
         state: started
       retries: 5
       delay: 10
-      register: api_wait
-      when: (node_registered is not defined) or (node_registered.rc != 0)
 
-    - name: Join worker node to cluster (clean state)
-      ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+    - name: Join worker node to cluster
+      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
       register: join_result
       retries: 3
-      delay: 15
+      delay: 20
       until: join_result.rc == 0
-      failed_when: false
-      when: 
-        - (node_registered is not defined) or (node_registered.rc != 0)
-        - not final_check.stat.exists
-
-    - name: Join worker node to cluster (with ignore-preflight-errors)
-      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --ignore-preflight-errors=FileAvailable--etc-kubernetes-kubelet.conf,Port-10250,FileAvailable--etc-kubernetes-pki-ca.crt"
-      register: join_result_forced
-      retries: 3
-      delay: 15
-      until: join_result_forced.rc == 0
+      when: (node_registered is not defined) or (node_registered.rc != 0)
       when: 
         - (node_registered is not defined) or (node_registered.rc != 0)
         - (final_check.stat.exists) or (join_result is defined and join_result.rc != 0)

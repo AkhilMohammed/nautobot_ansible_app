@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FIX - Always clean etcd to prevent corruption
+#Trigger: FIX worker kubelet TLS Bootstrap timeout
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
