@@ -473,6 +473,45 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: flannel_check.rc != 0
 
+    - name: Check if Flannel DaemonSet has stuck/corrupted pods
+      ansible.builtin.shell: |
+        DESIRED=$(kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
+        READY=$(kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
+        if [ "$DESIRED" -gt "0" ] && [ "$READY" -eq "0" ]; then
+          # Pods exist but none are ready - likely stuck from previous deployment
+          echo "STUCK"
+        else
+          echo "OK"
+        fi
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: flannel_stuck_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display Flannel status
+      ansible.builtin.debug:
+        msg: "Flannel DaemonSet status: {{ flannel_stuck_check.stdout }} (pods may be stuck from previous failed deployment)"
+
+    - name: Delete stuck Flannel resources to force clean restart
+      ansible.builtin.shell: |
+        kubectl delete daemonset kube-flannel-ds -n kube-flannel --ignore-not-found=true
+        kubectl delete pods --all -n kube-flannel --ignore-not-found=true
+        sleep 5
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      when: flannel_stuck_check.stdout == "STUCK"
+
+    - name: Reinstall Flannel after cleanup
+      ansible.builtin.shell: |
+        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      when: flannel_stuck_check.stdout == "STUCK"
+
     - name: Wait for Flannel DaemonSet to be available
       ansible.builtin.shell: |
         kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.numberReady}'
