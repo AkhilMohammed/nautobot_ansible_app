@@ -826,6 +826,35 @@
       changed_when: false
       when: (node_registered is not defined) or (node_registered.rc != 0)
 
+    - name: Check API server health before Flannel check
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
+        port: 6443
+        timeout: 10
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: api_health_check
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Restart kubelet on master if API server down
+      ansible.builtin.service:
+        name: kubelet
+        state: restarted
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: true
+      when: api_health_check is defined and api_health_check.failed
+
+    - name: Wait for API server recovery
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
+        port: 6443
+        timeout: 60
+        delay: 5
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      when: api_health_check is defined and api_health_check.failed
+      retries: 3
+      delay: 10
+
     - name: Wait for Flannel pod to be running on this worker
       ansible.builtin.shell: |
         kubectl get pods -n kube-flannel -o wide --field-selector spec.nodeName={{ inventory_hostname }} | grep Running
@@ -867,7 +896,8 @@
 
     - name: Pause between worker joins to stabilize cluster
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 30
+        prompt: "⏸️  Pausing 30 seconds to allow API server and control plane to stabilize before next worker join"
 
 - name: Configure node labels and taints
   hosts: k8s_control_plane
