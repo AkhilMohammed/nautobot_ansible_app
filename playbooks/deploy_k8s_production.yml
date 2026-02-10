@@ -559,6 +559,52 @@
           - "   - kubeconfig-backup.yaml (for cluster access)"
           - "   - README.txt (recovery instructions)"
 
+- name: Verify API server health before worker joins
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check if API server is responsive
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        timeout: 10
+        state: started
+      register: api_check
+      failed_when: false
+
+    - name: Check API server pod status
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.phase}'
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: apiserver_pod
+      failed_when: false
+      become: false
+
+    - name: Display API server status
+      ansible.builtin.debug:
+        msg: 
+          - "API server port 6443: {{ 'accessible' if api_check.failed == false else 'NOT accessible' }}"
+          - "API server pod status: {{ apiserver_pod.stdout if apiserver_pod.rc == 0 else 'Unable to check' }}"
+
+    - name: Restart kubelet if API server is down
+      ansible.builtin.service:
+        name: kubelet
+        state: restarted
+      when: api_check.failed or (apiserver_pod.rc != 0) or (apiserver_pod.stdout != 'Running')
+
+    - name: Wait for API server to be healthy after restart
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        timeout: 60
+        state: started
+      retries: 3
+      delay: 10
+      when: api_check.failed or (apiserver_pod.rc != 0) or (apiserver_pod.stdout != 'Running')
+
 - name: Join worker nodes to cluster
   hosts: k8s_workers
   become: true
@@ -592,6 +638,20 @@
       ansible.builtin.debug:
         msg: "Worker node time status: {{ worker_time_status.stdout_lines }}"
 
+    - name: Check if API server is accessible from worker
+      ansible.builtin.wait_for:
+        host: "{{ groups['k8s_control_plane'][0] }}"
+        port: 6443
+        timeout: 30
+        state: started
+      register: api_server_check
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Display API server accessibility
+      ansible.builtin.debug:
+        msg: "API server {{ groups['k8s_control_plane'][0] }}:6443 is {{ 'accessible' if api_server_check.failed == false else 'NOT accessible - this may cause issues' }}"
+
     - name: Check if node is registered in Kubernetes cluster
       ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o name
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
@@ -601,38 +661,69 @@
       register: node_registered
       failed_when: false
       changed_when: false
+      when: api_server_check.failed == false
 
     - name: Display node registration status
       ansible.builtin.debug:
-        msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if node_registered.rc == 0 else 'not registered' }}"
+        msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if (node_registered is defined and node_registered.rc == 0) else 'not registered or API server unavailable' }}"
 
-    - name: Stop kubelet service if node not registered
+    - name: Run kubeadm reset to clean up node state
+      ansible.builtin.command: kubeadm reset -f
+      when: (node_registered is not defined) or (node_registered.rc != 0)
+      register: reset_result
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Stop kubelet service after reset
       ansible.builtin.service:
         name: kubelet
         state: stopped
-      when: node_registered.rc != 0
+      when: (node_registered is not defined) or (node_registered.rc != 0)
       ignore_errors: yes
 
-    - name: Remove stale Kubernetes config if node not registered
+    - name: Kill any process using port 10250
+      ansible.builtin.shell: |
+        fuser -k 10250/tcp || true
+        sleep 1
+      when: (node_registered is not defined) or (node_registered.rc != 0)
+      ignore_errors: yes
+
+    - name: Remove stale Kubernetes config directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/kubernetes
         - /var/lib/kubelet
-      when: node_registered.rc != 0
+        - /var/lib/etcd
+        - /etc/cni/net.d
+      when: (node_registered is not defined) or (node_registered.rc != 0)
 
     - name: Check if kubelet.conf exists after cleanup
       ansible.builtin.stat:
         path: /etc/kubernetes/kubelet.conf
       register: kubelet_conf_exists
 
+    - name: Fail if cleanup didn't work
+      ansible.builtin.fail:
+        msg: "Cleanup failed - /etc/kubernetes/kubelet.conf still exists after cleanup"
+      when: kubelet_conf_exists.stat.exists
+
+    - name: Wait for API server to be responsive before join
+      ansible.builtin.wait_for:
+        host: "{{ groups['k8s_control_plane'][0] }}"
+        port: 6443
+        timeout: 60
+        state: started
+      retries: 5
+      delay: 10
+      register: api_wait
+
     - name: Join worker node to cluster
       ansible.builtin.command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
-      when: not kubelet_conf_exists.stat.exists
       register: join_result
       retries: 3
-      delay: 10
+      delay: 15
       until: join_result.rc == 0
 
     - name: Display join result
@@ -684,6 +775,25 @@
       retries: 30
       delay: 10
       changed_when: false
+
+    - name: Verify API server still responsive after worker join
+      ansible.builtin.wait_for:
+        host: "{{ groups['k8s_control_plane'][0] }}"
+        port: 6443
+        timeout: 10
+        state: started
+      register: post_join_api_check
+      delegate_to: localhost
+      become: false
+
+    - name: Display post-join API server status
+      ansible.builtin.debug:
+        msg: "✅ API server still responsive after {{ inventory_hostname }} joined"
+      when: not post_join_api_check.failed
+
+    - name: Pause between worker joins to stabilize cluster
+      ansible.builtin.pause:
+        seconds: 10
 
 - name: Configure node labels and taints
   hosts: k8s_control_plane
