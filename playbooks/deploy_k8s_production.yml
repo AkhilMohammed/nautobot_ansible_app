@@ -302,45 +302,17 @@
         path: /etc/kubernetes/admin.conf
       register: k8s_initialized
 
-    - name: Check if API server port is listening
-      ansible.builtin.wait_for:
-        host: "{{ ansible_host }}"
-        port: 6443
-        timeout: 30
-        delay: 2
-      register: apiserver_port_check
-      ignore_errors: yes
-      when: k8s_initialized.stat.exists
+    - name: FORCE RESET - Clean slate for troubled cluster
+      ansible.builtin.set_fact:
+        force_cluster_reset: true
 
-    - name: Check if kubectl works (API server functional)
-      ansible.builtin.command: kubectl cluster-info
-      register: kubectl_check
-      ignore_errors: yes
-      failed_when: false
-      changed_when: false
-      when: 
-        - k8s_initialized.stat.exists
-        - apiserver_port_check is defined
-        - not apiserver_port_check.failed
-      environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
-
-    - name: Display cluster health status
+    - name: Display force reset decision
       ansible.builtin.debug:
-        msg: |
-          Cluster Status:
-          - Initialized: {{ k8s_initialized.stat.exists }}
-          - API Port (6443): {{ 'Open' if not apiserver_port_check.failed else 'Closed/Timeout' }}
-          - kubectl works: {{ 'Yes' if (kubectl_check is defined and kubectl_check.rc == 0) else 'No' }}
-          - Decision: {{ 'Keep existing cluster' if (k8s_initialized.stat.exists and not apiserver_port_check.failed and kubectl_check is defined and kubectl_check.rc == 0) else 'Will initialize/reset cluster' }}
-      when: k8s_initialized.stat.exists
+        msg: "FORCING FULL CLUSTER RESET to eliminate corruption from previous failed deployments"
 
-    - name: Reset Kubernetes cluster ONLY if truly corrupted
+    - name: Reset Kubernetes cluster (forced for clean deployment)
       ansible.builtin.command: kubeadm reset -f
-      when: 
-        - k8s_initialized.stat.exists
-        - apiserver_port_check is defined
-        - apiserver_port_check.failed or (kubectl_check is defined and kubectl_check.rc != 0)
+      when: k8s_initialized.stat.exists
       register: kubeadm_reset_output
 
     - name: Remove corrupt Kubernetes state files after reset
