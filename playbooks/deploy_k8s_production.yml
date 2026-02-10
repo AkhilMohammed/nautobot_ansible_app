@@ -819,6 +819,28 @@
       ansible.builtin.debug:
         msg: "Pre-join status: kubelet=stopped, kubelet.conf={{ 'EXISTS (WARNING!)' if final_file_check.stat.exists else 'removed' }}"
 
+    - name: Verify API server is healthy before join attempt
+      ansible.builtin.command: kubectl get nodes
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: api_health_before_join
+      retries: 5
+      delay: 5
+      until: api_health_before_join.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Display API server health
+      ansible.builtin.debug:
+        msg: "API server health: {{ 'HEALTHY' if api_health_before_join.rc == 0 else 'DEGRADED - waiting...' }}"
+
+    - name: Wait additional time if API degraded
+      ansible.builtin.pause:
+        seconds: 30
+      when: api_health_before_join.rc != 0
+
     - name: Join worker node to cluster
       ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
       register: join_result
@@ -906,8 +928,8 @@
 
     - name: Pause between worker joins to reduce API load
       ansible.builtin.pause:
-        seconds: 15
-        prompt: "Pausing before next worker to allow cluster to stabilize..."
+        seconds: 45
+        prompt: "Pausing 45 seconds after worker join to allow cluster to stabilize..."
 
 - name: Verify all workers joined and Calico pods deployed
   hosts: k8s_control_plane

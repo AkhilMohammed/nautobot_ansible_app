@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: REDUCE API load during worker joins
+#Trigger: Increase pause & add API health check
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
