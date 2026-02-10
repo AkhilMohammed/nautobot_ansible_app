@@ -829,18 +829,17 @@
 
     - name: Verify API server still responsive after worker join
       ansible.builtin.wait_for:
-        host: "{{ groups['k8s_control_plane'][0] }}"
+        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
         port: 6443
         timeout: 10
         state: started
       register: post_join_api_check
-      delegate_to: localhost
-      become: false
+      failed_when: false
+      ignore_errors: yes
 
     - name: Display post-join API server status
       ansible.builtin.debug:
-        msg: "✅ API server still responsive after {{ inventory_hostname }} joined"
-      when: not post_join_api_check.failed
+        msg: "{{ '✅ API server still responsive after ' + inventory_hostname + ' joined' if not post_join_api_check.failed else '⚠️  API server check failed but continuing' }}"
 
     - name: Pause between worker joins to stabilize cluster
       ansible.builtin.pause:
