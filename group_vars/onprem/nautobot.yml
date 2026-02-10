@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FIX kubelet auto-restart race condition
+#Trigger: REDUCE API load during worker joins
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

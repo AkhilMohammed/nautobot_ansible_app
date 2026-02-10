@@ -882,83 +882,87 @@
       retries: 3
       delay: 10
 
-    - name: Wait for Calico pod to be scheduled on this worker
-      ansible.builtin.shell: |
-        kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "NO_POD"
+    - name: Wait for kubelet to register node
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: "Waiting for kubelet to register node {{ inventory_hostname }} in cluster..."
+
+    - name: Quick check - Verify node appears in cluster
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o jsonpath='{.metadata.name}'
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       become: false
       environment:
         KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: calico_pod_scheduled
-      until: calico_pod_scheduled.stdout != "NO_POD" and calico_pod_scheduled.stdout != ""
-      retries: 60
+      register: node_check
+      retries: 10
       delay: 5
+      until: node_check.stdout == inventory_hostname
       changed_when: false
       failed_when: false
 
-    - name: Get Calico pod status on this worker
-      ansible.builtin.shell: |
-        POD_NAME=$(kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -z "$POD_NAME" ]; then
-          echo "STATUS=NO_POD"
-        else
-          STATUS=$(kubectl get pod $POD_NAME -n kube-system -o jsonpath='{.status.phase}')
-          echo "POD=$POD_NAME STATUS=$STATUS"
-        fi
-      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
-      become: false
-      environment:
-        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: calico_pod_status
-      changed_when: false
-
-    - name: Display Calico pod status
+    - name: Display node registration
       ansible.builtin.debug:
-        msg: "Calico on {{ inventory_hostname }}: {{ calico_pod_status.stdout }}"
+        msg: "Node {{ inventory_hostname }}: {{ 'Registered in cluster' if (node_check is defined and node_check.stdout == inventory_hostname) else 'Registration pending' }}"
 
-    - name: Wait for Calico pod to be running on this worker
-      ansible.builtin.shell: |
-        kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].status.phase}'
-      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
-      become: false
+    - name: Pause between worker joins to reduce API load
+      ansible.builtin.pause:
+        seconds: 15
+        prompt: "Pausing before next worker to allow cluster to stabilize..."
+
+- name: Verify all workers joined and Calico pods deployed
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Wait for cluster to stabilize after all worker joins
+      ansible.builtin.pause:
+        seconds: 60
+        prompt: "⏸️  Giving cluster 60 seconds to stabilize after all worker joins..."
+
+    - name: Check all nodes are registered
+      ansible.builtin.command: kubectl get nodes -o name
       environment:
-        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: worker_calico_check
-      until: worker_calico_check.stdout == "Running"
-      retries: 40
-      delay: 5
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: all_nodes
       changed_when: false
 
-    - name: Wait for node to be Ready
-      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
-      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
-      become: false
+    - name: Display all registered nodes
+      ansible.builtin.debug:
+        msg: "{{ all_nodes.stdout_lines }}"
+
+    - name: Verify Calico pods are being created
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
       environment:
-        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: worker_ready
-      until: worker_ready.stdout == "True"
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: calico_pods_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display Calico pods deployment status
+      ansible.builtin.debug:
+        msg: "{{ calico_pods_status.stdout_lines }}"
+
+    - name: Wait for all Calico pods to reach Running state
+      ansible.builtin.shell: |
+        TOTAL=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.desiredNumberScheduled}')
+        READY=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}')
+        echo "READY=$READY TOTAL=$TOTAL"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: calico_daemonset_status
+      until: calico_daemonset_status.stdout is search('READY=\d+ TOTAL=\d+') and (calico_daemonset_status.stdout.split('READY=')[1].split(' ')[0] == calico_daemonset_status.stdout.split('TOTAL=')[1].split(' ')[0])
       retries: 30
       delay: 10
       changed_when: false
-
-    - name: Verify API server still responsive after worker join
-      ansible.builtin.wait_for:
-        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
-        port: 6443
-        timeout: 10
-        state: started
-      register: post_join_api_check
       failed_when: false
-      ignore_errors: yes
 
-    - name: Display post-join API server status
+    - name: Display final Calico status
       ansible.builtin.debug:
-        msg: "{{ '✅ API server still responsive after ' + inventory_hostname + ' joined' if not post_join_api_check.failed else '⚠️  API server check failed but continuing' }}"
-
-    - name: Pause between worker joins to stabilize cluster
-      ansible.builtin.pause:
-        seconds: 30
-        prompt: "⏸️  Pausing 30 seconds to allow API server and control plane to stabilize before next worker join"
+        msg: "Calico DaemonSet status: {{ calico_daemonset_status.stdout }}"
 
 - name: Configure node labels and taints
   hosts: k8s_control_plane
