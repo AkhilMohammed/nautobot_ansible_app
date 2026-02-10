@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Aggressive cleanup with ignore-preflight-errors fallback
+#Trigger: Idempotency fix - skip join if already registered
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
