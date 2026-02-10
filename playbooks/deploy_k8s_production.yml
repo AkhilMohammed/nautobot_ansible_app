@@ -489,10 +489,10 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: calico_stuck_check.stdout == "STUCK"
 
-    - name: Wait 30 seconds for API server to stabilize after all worker joins
+    - name: Wait 90 seconds for API server to stabilize after all worker joins
       ansible.builtin.pause:
-        seconds: 30
-        prompt: "Waiting for API server to stabilize after worker joins..."
+        seconds: 90
+        prompt: "Waiting 90 seconds for API server to stabilize after worker joins..."
 
     - name: Check if API server is responsive
       ansible.builtin.wait_for:
@@ -566,6 +566,71 @@
           delay: 5
           until: api_health_recovered.rc == 0
       when: api_health_post_join.rc != 0 or api_port_check.failed
+
+    - name: Final API health check before Calico verification
+      ansible.builtin.command: kubectl get nodes
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: api_health_before_calico
+      retries: 10
+      delay: 10
+      until: api_health_before_calico.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Emergency recovery if API crashed before Calico check
+      block:
+        - name: Display API crash detected
+          ansible.builtin.debug:
+            msg: "API server crashed before Calico check - initiating emergency recovery"
+
+        - name: Check control plane pods
+          ansible.builtin.command: crictl pods
+          register: all_pods_status
+          changed_when: false
+
+        - name: Get API server container logs
+          ansible.builtin.shell: crictl logs $(crictl ps --name kube-apiserver -q) 2>&1 | tail -100
+          register: apiserver_crash_logs
+          changed_when: false
+          failed_when: false
+
+        - name: Display crash diagnostics
+          ansible.builtin.debug:
+            msg:
+              - "=== CONTROL PLANE PODS ==="
+              - "{{ all_pods_status.stdout_lines }}"
+              - "=== API SERVER CRASH LOGS ==="
+              - "{{ apiserver_crash_logs.stdout_lines[-30:] }}"
+
+        - name: Restart kubelet to recover crashed control plane
+          ansible.builtin.systemd:
+            name: kubelet
+            state: restarted
+          become: true
+
+        - name: Wait 60 seconds for control plane pods to restart
+          ansible.builtin.pause:
+            seconds: 60
+
+        - name: Wait for API server port to be available
+          ansible.builtin.wait_for:
+            host: "{{ ansible_host }}"
+            port: 6443
+            timeout: 180
+            state: started
+
+        - name: Verify API server fully recovered
+          ansible.builtin.command: kubectl get nodes
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: api_health_recovered_final
+          retries: 15
+          delay: 10
+          until: api_health_recovered_final.rc == 0
+      when: api_health_before_calico.rc != 0
 
     - name: Wait for Calico DaemonSet to be available
       ansible.builtin.shell: |

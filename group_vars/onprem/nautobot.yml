@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Unmask kubelet RIGHT before join only
+#Trigger: 90s stabilization + pre-Calico health check
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
