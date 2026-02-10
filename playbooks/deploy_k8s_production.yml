@@ -488,6 +488,13 @@
         filename: kubernetes
         state: present
 
+    - name: Ensure APT ignores time validation before K8s install
+      ansible.builtin.copy:
+        content: |
+          Acquire::Check-Valid-Until "false";
+        dest: /etc/apt/apt.conf.d/99-ignore-time-check
+        mode: '0644'
+
     - name: Install Kubernetes components
       ansible.builtin.apt:
         name:
@@ -496,6 +503,10 @@
           - kubectl=1.28.*
         state: present
         update_cache: yes
+      register: k8s_install
+      until: k8s_install is success
+      retries: 5
+      delay: 30
 
     - name: Hold Kubernetes packages from auto-upgrade
       ansible.builtin.dpkg_selections:

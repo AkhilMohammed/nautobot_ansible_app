@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Force APT to ignore time validation (system clock workaround)
+#Trigger: Ensure APT config before K8s install + retries
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
