@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Smart conditional cleanup (only when needed)
+#Trigger: Verify node Ready + Calico Running before next worker
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

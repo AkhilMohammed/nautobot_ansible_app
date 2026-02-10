@@ -1413,6 +1413,59 @@
       ansible.builtin.debug:
         msg: "Node {{ inventory_hostname }}: {{ 'Registered in cluster' if (node_check is defined and node_check.stdout == inventory_hostname) else 'Registration pending' }}"
 
+    - name: CRITICAL - Wait for this worker node to be Ready
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: node_ready_status
+      until: node_ready_status.stdout == "True"
+      retries: 40
+      delay: 10
+      changed_when: false
+
+    - name: Display node ready status
+      ansible.builtin.debug:
+        msg: "Node {{ inventory_hostname }} is now Ready"
+
+    - name: CRITICAL - Wait for Calico pod to be Running on this worker
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l k8s-app=calico-node \
+          --field-selector spec.nodeName={{ inventory_hostname }} \
+          -o jsonpath='{.items[0].status.phase}'
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: calico_pod_status
+      until: calico_pod_status.stdout == "Running"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Display Calico status
+      ansible.builtin.debug:
+        msg: "Calico pod on {{ inventory_hostname }} is Running"
+
+    - name: CRITICAL - Verify all CSRs are approved (not just cleared)
+      ansible.builtin.shell: |
+        kubectl get csr --no-headers | grep -v Approved || echo "All approved"
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: unapproved_csrs
+      until: unapproved_csrs.stdout == "All approved"
+      retries: 20
+      delay: 5
+      changed_when: false
+      failed_when: false
+
+    - name: Display CSR status
+      ansible.builtin.debug:
+        msg: "All CSRs approved - API server ready for next worker"
+
     - name: Wait for CSR queue to clear before next worker
       ansible.builtin.command: kubectl get csr --no-headers
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
@@ -1428,8 +1481,8 @@
 
     - name: Pause between worker joins to reduce API load
       ansible.builtin.pause:
-        seconds: 90
-        prompt: "Pausing 90 seconds after worker join to allow cluster to stabilize..."
+        seconds: 120
+        prompt: "Worker {{ inventory_hostname }} fully operational - pausing 120 seconds before next worker for API stability..."
 
 - name: Verify all workers joined and Calico pods deployed
   hosts: k8s_control_plane
