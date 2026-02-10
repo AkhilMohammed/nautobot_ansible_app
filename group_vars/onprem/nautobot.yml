@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: API server recovery after worker joins
+#Trigger: Remove invalid kubeadm flag, fix CSR count
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

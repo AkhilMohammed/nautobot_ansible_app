@@ -931,16 +931,16 @@
 
     - name: Display CSR queue status
       ansible.builtin.debug:
-        msg: "Pending CSRs: {{ csr_before_join.stdout_lines | length }} - {{ 'Queue clear' if csr_before_join.stdout_lines | length <= 1 else 'WARNING: Queue backed up' }}"
+        msg: "Pending CSRs: {{ csr_before_join.stdout_lines | length - 1 }} - {{ 'Queue clear' if (csr_before_join.stdout_lines | length) <= 2 else 'WARNING: Queue backed up' }}"
 
-    - name: Join worker node to cluster with extended timeout
-      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --discovery-timeout=10m"
+    - name: Join worker node to cluster
+      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
       register: join_result
       retries: 3
       delay: 20
       until: join_result.rc == 0
       when: (node_registered is not defined) or (node_registered.rc != 0)
-      async: 900
+      async: 600
       poll: 15
 
     - name: Display join result
