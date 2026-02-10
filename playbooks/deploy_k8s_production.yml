@@ -489,6 +489,84 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: calico_stuck_check.stdout == "STUCK"
 
+    - name: Wait 30 seconds for API server to stabilize after all worker joins
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: "Waiting for API server to stabilize after worker joins..."
+
+    - name: Check if API server is responsive
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        timeout: 60
+        state: started
+      register: api_port_check
+      failed_when: false
+
+    - name: Verify API server health after worker joins
+      ansible.builtin.command: kubectl get --raw /healthz
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: api_health_post_join
+      retries: 10
+      delay: 10
+      until: api_health_post_join.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: If API server crashed, check control plane pod status
+      block:
+        - name: Check kube-apiserver pod status
+          ansible.builtin.command: crictl pods --name kube-apiserver
+          register: apiserver_pod_status
+          changed_when: false
+
+        - name: Check etcd pod status  
+          ansible.builtin.command: crictl pods --name etcd
+          register: etcd_pod_status
+          changed_when: false
+
+        - name: Get API server logs
+          ansible.builtin.shell: crictl logs $(crictl ps --name kube-apiserver -q) 2>&1 | tail -50
+          register: apiserver_logs
+          changed_when: false
+          failed_when: false
+
+        - name: Display control plane diagnostics
+          ansible.builtin.debug:
+            msg:
+              - "=== API SERVER POD STATUS ==="
+              - "{{ apiserver_pod_status.stdout_lines }}"
+              - "=== ETCD POD STATUS ==="
+              - "{{ etcd_pod_status.stdout_lines }}"
+              - "=== API SERVER LOGS (last 50 lines) ==="
+              - "{{ apiserver_logs.stdout_lines }}"
+
+        - name: Force kubelet restart to recover control plane
+          ansible.builtin.systemd:
+            name: kubelet
+            state: restarted
+          become: true
+
+        - name: Wait for API server to come back up
+          ansible.builtin.wait_for:
+            host: "{{ ansible_host }}"
+            port: 6443
+            timeout: 120
+            state: started
+
+        - name: Verify API server recovered
+          ansible.builtin.command: kubectl get --raw /healthz
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: api_health_recovered
+          retries: 10
+          delay: 5
+          until: api_health_recovered.rc == 0
+      when: api_health_post_join.rc != 0 or api_port_check.failed
+
     - name: Wait for Calico DaemonSet to be available
       ansible.builtin.shell: |
         kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}'
@@ -841,17 +919,70 @@
         seconds: 30
       when: api_health_before_join.rc != 0
 
-    - name: Join worker node to cluster
-      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+    - name: Check pending certificate signing requests before join
+      ansible.builtin.command: kubectl get csr
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: csr_before_join
+      changed_when: false
+      failed_when: false
+
+    - name: Display CSR queue status
+      ansible.builtin.debug:
+        msg: "Pending CSRs: {{ csr_before_join.stdout_lines | length }} - {{ 'Queue clear' if csr_before_join.stdout_lines | length <= 1 else 'WARNING: Queue backed up' }}"
+
+    - name: Join worker node to cluster with extended timeout
+      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --discovery-timeout=10m"
       register: join_result
       retries: 3
       delay: 20
       until: join_result.rc == 0
       when: (node_registered is not defined) or (node_registered.rc != 0)
+      async: 900
+      poll: 15
 
     - name: Display join result
       ansible.builtin.debug:
         msg: "{{ join_result.stdout_lines if join_result is defined and join_result.stdout_lines is defined else 'Node already registered in cluster - skipping join' }}"
+
+    - name: If join failed, capture kubelet and API diagnostics
+      block:
+        - name: Get kubelet logs on failure
+          ansible.builtin.command: journalctl -u kubelet -n 50 --no-pager
+          register: kubelet_logs
+          changed_when: false
+
+        - name: Get pending CSRs
+          ansible.builtin.command: kubectl get csr -o wide
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: false
+          environment:
+            KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+          register: csr_status
+          changed_when: false
+
+        - name: Check API server load
+          ansible.builtin.command: kubectl top nodes
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: false
+          environment:
+            KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+          register: api_load
+          changed_when: false
+          failed_when: false
+
+        - name: Display failure diagnostics
+          ansible.builtin.debug:
+            msg:
+              - "=== KUBELET LOGS ==="
+              - "{{ kubelet_logs.stdout_lines[-20:] }}"
+              - "=== CERTIFICATE SIGNING REQUESTS ==="
+              - "{{ csr_status.stdout_lines }}"
+              - "=== API SERVER LOAD ==="
+              - "{{ api_load.stdout_lines if api_load.rc == 0 else 'Metrics not available' }}"
+      when: join_result is defined and join_result.rc != 0
 
     - name: Wait for kubelet to be active on worker
       ansible.builtin.systemd:
@@ -926,10 +1057,23 @@
       ansible.builtin.debug:
         msg: "Node {{ inventory_hostname }}: {{ 'Registered in cluster' if (node_check is defined and node_check.stdout == inventory_hostname) else 'Registration pending' }}"
 
+    - name: Wait for CSR queue to clear before next worker
+      ansible.builtin.command: kubectl get csr --no-headers
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: csr_queue
+      until: (csr_queue.stdout_lines | length) <= 1
+      retries: 10
+      delay: 5
+      changed_when: false
+      failed_when: false
+
     - name: Pause between worker joins to reduce API load
       ansible.builtin.pause:
-        seconds: 45
-        prompt: "Pausing 45 seconds after worker join to allow cluster to stabilize..."
+        seconds: 60
+        prompt: "Pausing 60 seconds after worker join to allow cluster to stabilize..."
 
 - name: Verify all workers joined and Calico pods deployed
   hosts: k8s_control_plane

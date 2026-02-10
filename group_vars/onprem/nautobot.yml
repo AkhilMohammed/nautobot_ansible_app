@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Increase pause & add API health check
+#Trigger: API server recovery after worker joins
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
