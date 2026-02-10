@@ -293,7 +293,14 @@
       ansible.builtin.debug:
         msg: "Current system time: {{ current_time.stdout }}"
 
-    - name: Update apt cache with proper time
+    - name: Configure APT to ignore time validation (system clock issue workaround)
+      ansible.builtin.copy:
+        content: |
+          Acquire::Check-Valid-Until "false";
+        dest: /etc/apt/apt.conf.d/99-ignore-time-check
+        mode: '0644'
+
+    - name: Update apt cache (ignoring time validation)
       ansible.builtin.apt:
         update_cache: yes
         cache_valid_time: 0

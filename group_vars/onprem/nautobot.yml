@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Fix time sync + master API recovery before joins
+#Trigger: Force APT to ignore time validation (system clock workaround)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
