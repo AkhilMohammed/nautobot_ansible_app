@@ -626,10 +626,10 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       when: calico_stuck_check.stdout == "STUCK"
 
-    - name: Wait 90 seconds for API server to stabilize after all worker joins
+    - name: Wait 180 seconds for API server to fully stabilize after all worker joins
       ansible.builtin.pause:
-        seconds: 90
-        prompt: "Waiting 90 seconds for API server to stabilize after worker joins..."
+        seconds: 180
+        prompt: "Waiting 180 seconds for API server to stabilize after all worker joins..."
 
     - name: Check if API server is responsive
       ansible.builtin.wait_for:
@@ -680,17 +680,51 @@
               - "=== API SERVER LOGS (last 50 lines) ==="
               - "{{ apiserver_logs.stdout_lines }}"
 
-        - name: Force kubelet restart to recover control plane
+        - name: AGGRESSIVE RECOVERY - Stop containerd to reset everything
+          ansible.builtin.systemd:
+            name: containerd
+            state: stopped
+          become: true
+
+        - name: Wait for all processes to stop
+          ansible.builtin.pause:
+            seconds: 10
+
+        - name: AGGRESSIVE RECOVERY - Restart containerd
+          ansible.builtin.systemd:
+            name: containerd
+            state: started
+          become: true
+
+        - name: Wait for containerd to initialize
+          ansible.builtin.pause:
+            seconds: 15
+
+        - name: AGGRESSIVE RECOVERY - Restart kubelet
           ansible.builtin.systemd:
             name: kubelet
             state: restarted
           become: true
 
+        - name: Wait for static pods to restart (critical)
+          ansible.builtin.pause:
+            seconds: 90
+            prompt: "Waiting 90 seconds for etcd and API server static pods to fully restart..."
+
+        - name: Check if static pods are running
+          ansible.builtin.command: crictl pods --state Ready
+          register: static_pods_running
+          retries: 10
+          delay: 10
+          until: "'kube-apiserver' in static_pods_running.stdout and 'etcd' in static_pods_running.stdout"
+          changed_when: false
+          failed_when: false
+
         - name: Wait for API server to come back up
           ansible.builtin.wait_for:
             host: "{{ ansible_host }}"
             port: 6443
-            timeout: 120
+            timeout: 180
             state: started
 
         - name: Verify API server recovered
@@ -699,8 +733,8 @@
           environment:
             KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
           register: api_health_recovered
-          retries: 10
-          delay: 5
+          retries: 20
+          delay: 10
           until: api_health_recovered.rc == 0
       when: api_health_post_join.rc != 0 or api_port_check.failed
 
@@ -1341,8 +1375,8 @@
 
     - name: Pause between worker joins to reduce API load
       ansible.builtin.pause:
-        seconds: 60
-        prompt: "Pausing 60 seconds after worker join to allow cluster to stabilize..."
+        seconds: 90
+        prompt: "Pausing 90 seconds after worker join to allow cluster to stabilize..."
 
 - name: Verify all workers joined and Calico pods deployed
   hosts: k8s_control_plane

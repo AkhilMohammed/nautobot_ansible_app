@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Complete system cleanup at start
+#Trigger: Aggressive recovery + 180s stabilization
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
