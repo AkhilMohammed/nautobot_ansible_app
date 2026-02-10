@@ -271,10 +271,36 @@
         state: present
       loop: "{{ groups['k8s_control_plane'] + groups['k8s_workers'] }}"
 
-    - name: Update apt cache
+    - name: Force immediate time synchronization
+      ansible.builtin.shell: |
+        timedatectl set-ntp false
+        sleep 2
+        timedatectl set-ntp true
+        systemctl restart chrony
+        sleep 3
+        chronyc -a 'burst 4/4'
+        sleep 5
+        chronyc -a makestep
+        sleep 3
+      ignore_errors: yes
+
+    - name: Verify current time
+      ansible.builtin.command: date
+      register: current_time
+      changed_when: false
+
+    - name: Display synchronized time
+      ansible.builtin.debug:
+        msg: "Current system time: {{ current_time.stdout }}"
+
+    - name: Update apt cache with proper time
       ansible.builtin.apt:
         update_cache: yes
-        cache_valid_time: 3600
+        cache_valid_time: 0
+      register: apt_update
+      until: apt_update is success
+      retries: 3
+      delay: 10
 
     - name: Install prerequisite packages
       ansible.builtin.apt:

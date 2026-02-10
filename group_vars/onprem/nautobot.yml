@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Immediate API recovery after EVERY worker join
+#Trigger: Fix time sync + master API recovery before joins
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
