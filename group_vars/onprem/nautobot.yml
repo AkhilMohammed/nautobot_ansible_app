@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Calico check with rescue block auto-recovery
+#Trigger: Disable kubelet + preflight bypass
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

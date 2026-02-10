@@ -1040,6 +1040,12 @@
       ansible.builtin.debug:
         msg: "Pending CSRs: {{ csr_before_join.stdout_lines | length - 1 }} - {{ 'Queue clear' if (csr_before_join.stdout_lines | length) <= 2 else 'WARNING: Queue backed up' }}"
 
+    - name: CRITICAL - Disable kubelet to prevent auto-start
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: no
+      ignore_errors: yes
+
     - name: CRITICAL - Unmask kubelet immediately before join
       ansible.builtin.systemd:
         name: kubelet
@@ -1052,8 +1058,15 @@
         state: stopped
       ignore_errors: yes
 
-    - name: Join worker node to cluster
-      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+    - name: CRITICAL - Kill any kubelet that auto-started
+      ansible.builtin.shell: |
+        pkill -9 kubelet || true
+        fuser -k 10250/tcp || true
+        sleep 1
+      ignore_errors: yes
+
+    - name: Join worker node to cluster with preflight bypass
+      ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --ignore-preflight-errors=FileAvailable--etc-kubernetes-kubelet.conf,FileAvailable--etc-kubernetes-pki-ca.crt,Port-10250"
       register: join_result
       retries: 3
       delay: 20
