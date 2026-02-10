@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: CRITICAL - Fix aggressive cluster reset (zero-downtime updates)
+#Trigger: API server recovery + 30s stabilization pauses
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
