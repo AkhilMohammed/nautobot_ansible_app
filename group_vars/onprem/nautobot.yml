@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Remove invalid kubeadm flag, fix CSR count
+#Trigger: Unmask kubelet RIGHT before join only
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
