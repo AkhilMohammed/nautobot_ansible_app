@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Idempotency fix - skip join if already registered
+#Trigger: Volume unmount and join fallback fixes
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
