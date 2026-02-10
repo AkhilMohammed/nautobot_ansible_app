@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FIX undefined variable in worker join
+#Trigger: FIX kubelet auto-restart race condition
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

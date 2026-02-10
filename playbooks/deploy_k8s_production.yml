@@ -707,7 +707,13 @@
       ansible.builtin.debug:
         msg: "Node {{ inventory_hostname }} registration status: {{ 'registered' if (node_registered is defined and node_registered.rc == 0) else 'not registered or API server unavailable' }}"
 
-    - name: FORCE CLEANUP - Stop kubelet service before cleanup
+    - name: FORCE CLEANUP - Mask kubelet to prevent auto-start
+      ansible.builtin.systemd:
+        name: kubelet
+        masked: yes
+      ignore_errors: yes
+
+    - name: FORCE CLEANUP - Stop kubelet service
       ansible.builtin.service:
         name: kubelet
         state: stopped
@@ -769,6 +775,12 @@
       ansible.builtin.pause:
         seconds: 5
 
+    - name: FORCE CLEANUP - Unmask kubelet for join
+      ansible.builtin.systemd:
+        name: kubelet
+        masked: no
+      ignore_errors: yes
+
     - name: Verify cleanup - Check critical files removed
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -791,6 +803,21 @@
         state: started
       retries: 5
       delay: 10
+
+    - name: Final check - Ensure kubelet is stopped before join
+      ansible.builtin.service:
+        name: kubelet
+        state: stopped
+      ignore_errors: yes
+
+    - name: Final check - Verify files still don't exist
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: final_file_check
+
+    - name: Display final state before join
+      ansible.builtin.debug:
+        msg: "Pre-join status: kubelet=stopped, kubelet.conf={{ 'EXISTS (WARNING!)' if final_file_check.stat.exists else 'removed' }}"
 
     - name: Join worker node to cluster
       ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
