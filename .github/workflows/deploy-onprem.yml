@@ -134,15 +134,38 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Copy CI SSH keys if they exist in repo
+          # Copy CI SSH keys (look in dev first, fallback to onprem)
           if [ -f "group_vars/dev/ansible-ci" ]; then
-            cp group_vars/dev/ansible-ci ~/.ssh/ansible-ci
-            chmod 600 ~/.ssh/ansible-ci
+            cp group_vars/dev/ansible-ci ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            echo "✓ Copied SSH private key"
+          elif [ -f "group_vars/onprem/ansible-ci" ]; then
+            cp group_vars/onprem/ansible-ci ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            echo "✓ Copied SSH private key from onprem"
+          else
+            echo "⚠️ No SSH private key found"
           fi
           
           if [ -f "group_vars/dev/ansible-ci.pub" ]; then
-            cp group_vars/dev/ansible-ci.pub ~/.ssh/ansible-ci.pub
-            chmod 644 ~/.ssh/ansible-ci.pub
+            cp group_vars/dev/ansible-ci.pub ~/.ssh/id_rsa.pub
+            chmod 644 ~/.ssh/id_rsa.pub
+            echo "✓ Copied SSH public key"
+          elif [ -f "group_vars/onprem/ansible-ci.pub" ]; then
+            cp group_vars/onprem/ansible-ci.pub ~/.ssh/id_rsa.pub
+            chmod 644 ~/.ssh/id_rsa.pub
+            echo "✓ Copied SSH public key from onprem"
+          fi
+          
+          # Start SSH agent and add key
+          eval $(ssh-agent -s)
+          if [ -f ~/.ssh/id_rsa ]; then
+            ssh-add ~/.ssh/id_rsa 2>/dev/null || echo "Could not add key to agent"
+          fi
+          
+          # Test SSH connectivity
+          echo "Testing SSH to first host..."
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@172.17.152.102 "echo '✓ SSH working'" || echo "⚠️ SSH test failed"
           fi
           
           # Verify key exists

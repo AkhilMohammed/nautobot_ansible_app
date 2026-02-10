@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: BULLETPROOF MODE - Auto-recovery, APT pre-config, aggressive retries
+#Trigger: CRITICAL FIX - SSH key configuration (ALL deployments failed - passwordless SSH broken)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
