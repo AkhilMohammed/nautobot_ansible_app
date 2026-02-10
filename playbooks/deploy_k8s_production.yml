@@ -674,6 +674,16 @@
       when: (node_registered is not defined) or (node_registered.rc != 0)
       ignore_errors: yes
 
+    - name: Unmount all kubelet volumes before cleanup
+      ansible.builtin.shell: |
+        # Unmount all volumes under /var/lib/kubelet
+        for mount in $(mount | grep '/var/lib/kubelet' | awk '{print $3}' | sort -r); do
+          umount -f "$mount" 2>/dev/null || true
+        done
+        sleep 1
+      when: (node_registered is not defined) or (node_registered.rc != 0)
+      ignore_errors: yes
+
     - name: Kill any process using port 10250
       ansible.builtin.shell: |
         fuser -k 10250/tcp || true
@@ -746,6 +756,7 @@
       retries: 3
       delay: 15
       until: join_result.rc == 0
+      failed_when: false
       when: 
         - (node_registered is not defined) or (node_registered.rc != 0)
         - not final_check.stat.exists
@@ -758,7 +769,7 @@
       until: join_result_forced.rc == 0
       when: 
         - (node_registered is not defined) or (node_registered.rc != 0)
-        - final_check.stat.exists
+        - (final_check.stat.exists) or (join_result is defined and join_result.rc != 0)
 
     - name: Set join result fact
       ansible.builtin.set_fact:
