@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: 90s stabilization + pre-Calico health check
+#Trigger: Calico check with rescue block auto-recovery
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

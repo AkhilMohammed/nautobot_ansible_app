@@ -632,29 +632,77 @@
           until: api_health_recovered_final.rc == 0
       when: api_health_before_calico.rc != 0
 
-    - name: Wait for Calico DaemonSet to be available
-      ansible.builtin.shell: |
-        kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}'
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: calico_ready
-      until: calico_ready.stdout | int > 0
-      retries: 30
-      delay: 10
-      changed_when: false
+    - name: Calico verification with automatic recovery
+      block:
+        - name: Wait for Calico DaemonSet to be available
+          ansible.builtin.shell: |
+            kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}'
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: calico_ready
+          until: calico_ready.stdout | int > 0
+          retries: 30
+          delay: 10
+          changed_when: false
 
-    - name: Verify Calico pods are running on master
-      ansible.builtin.shell: |
-        kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | grep onprem-k8s-master | grep Running
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: calico_pod_check
-      until: calico_pod_check.rc == 0
-      retries: 20
-      delay: 5
-      changed_when: false
+        - name: Verify Calico pods are running on master
+          ansible.builtin.shell: |
+            kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | grep onprem-k8s-master | grep Running
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: calico_pod_check
+          until: calico_pod_check.rc == 0
+          retries: 20
+          delay: 5
+          changed_when: false
+      rescue:
+        - name: Calico check failed - attempting API recovery
+          ansible.builtin.debug:
+            msg: "Calico verification failed - initiating control plane recovery"
+
+        - name: Restart kubelet to recover control plane
+          ansible.builtin.systemd:
+            name: kubelet
+            state: restarted
+          become: true
+
+        - name: Wait for control plane recovery
+          ansible.builtin.pause:
+            seconds: 90
+            prompt: "Waiting 90 seconds for full control plane recovery..."
+
+        - name: Verify API server recovered
+          ansible.builtin.wait_for:
+            host: "{{ ansible_host }}"
+            port: 6443
+            timeout: 120
+            state: started
+
+        - name: Retry Calico DaemonSet check after recovery
+          ansible.builtin.shell: |
+            kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}'
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: calico_ready_retry
+          until: calico_ready_retry.stdout | int > 0
+          retries: 30
+          delay: 10
+          changed_when: false
+
+        - name: Retry Calico pod verification after recovery
+          ansible.builtin.shell: |
+            kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | grep onprem-k8s-master | grep Running
+          become_user: "{{ ansible_user }}"
+          environment:
+            KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+          register: calico_pod_check_retry
+          until: calico_pod_check_retry.rc == 0
+          retries: 20
+          delay: 5
+          changed_when: false
 
     - name: Wait for master node to be Ready
       ansible.builtin.command: kubectl get nodes onprem-k8s-master -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
