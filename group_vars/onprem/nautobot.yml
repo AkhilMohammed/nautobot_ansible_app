@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Fix API server check - use IP instead of hostname
+#Trigger: CRITICAL - Fix aggressive cluster reset (zero-downtime updates)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
