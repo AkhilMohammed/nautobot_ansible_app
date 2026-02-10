@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: CRITICAL FIX - SSH key configuration (ALL deployments failed - passwordless SSH broken)
+# Trigger #82: SSH fix verified - testing full deployment with working passwordless SSH
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
