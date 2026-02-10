@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Ensure APT config before K8s install + retries
+#Trigger: FINAL - Increased all timeouts for stability (60s settle, 180s recovery, 150s pause)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

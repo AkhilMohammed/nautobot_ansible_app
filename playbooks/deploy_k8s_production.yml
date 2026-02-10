@@ -1349,14 +1349,14 @@
 
     - name: IMMEDIATE - Wait for join process to settle
       ansible.builtin.pause:
-        seconds: 30
-        prompt: "Worker joined - waiting 30s for processes to settle..."
+        seconds: 60
+        prompt: "Worker joined - waiting 60s for processes to settle and API to stabilize..."
 
     - name: IMMEDIATE - Check if API server survived the join
       ansible.builtin.wait_for:
         host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
         port: 6443
-        timeout: 10
+        timeout: 20
         state: started
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       register: api_port_after_join
@@ -1399,14 +1399,14 @@
 
         - name: Wait for static pods to restart (etcd + API server)
           ansible.builtin.pause:
-            seconds: 120
-            prompt: "Waiting 120 seconds for etcd and API server static pods to fully restart..."
+            seconds: 180
+            prompt: "Waiting 180 seconds for etcd and API server static pods to fully restart..."
 
         - name: Verify API server port is back up
           ansible.builtin.wait_for:
             host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
             port: 6443
-            timeout: 180
+            timeout: 300
             state: started
           delegate_to: "{{ groups['k8s_control_plane'][0] }}"
 
