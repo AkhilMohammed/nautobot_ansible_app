@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: API server recovery + 30s stabilization pauses
+#Trigger: Fix stuck Flannel pods + API recovery
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
