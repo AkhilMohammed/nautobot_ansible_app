@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Improved Flannel pod wait logic
+#Trigger: Retry deployment with all fixes
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
