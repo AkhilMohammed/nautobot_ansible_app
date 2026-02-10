@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: API server health checks and forced cleanup fixes
+#Trigger: Aggressive cleanup with ignore-preflight-errors fallback
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
