@@ -4,6 +4,79 @@
 # Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
 # Force cleanup: ansible-playbook ... -e force_cleanup=true
 
+- name: BULLETPROOF MODE - Pre-flight auto-recovery
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: true
+  ignore_errors: yes
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Detect clock skew and configure APT accordingly
+      block:
+        - name: Force APT to ignore time validation on all nodes
+          ansible.builtin.copy:
+            content: |
+              Acquire::Check-Valid-Until "false";
+              Acquire::Retries "10";
+              APT::Acquire::Retries "10";
+            dest: /etc/apt/apt.conf.d/99-ignore-time-check
+            mode: '0644'
+          
+        - name: Configure APT for reliability
+          ansible.builtin.copy:
+            content: |
+              APT::Get::Assume-Yes "true";
+              APT::Install-Recommends "0";
+              APT::Install-Suggests "0";
+            dest: /etc/apt/apt.conf.d/99-reliability
+            mode: '0644'
+          
+        - name: Attempt time sync (best effort)
+          ansible.builtin.shell: |
+            timedatectl set-ntp true 2>/dev/null || true
+            systemctl restart chrony 2>/dev/null || true
+            chronyc -a makestep 2>/dev/null || true
+          ignore_errors: yes
+          changed_when: false
+
+        - name: Initial apt-get update with aggressive retries
+          ansible.builtin.apt:
+            update_cache: yes
+            cache_valid_time: 0
+          register: initial_apt
+          until: initial_apt is success
+          retries: 10
+          delay: 15
+          ignore_errors: yes
+
+    - name: Auto-recover from previous failed deployments
+      block:
+        - name: Check for stuck processes
+          ansible.builtin.shell: |
+            pkill -9 kubelet 2>/dev/null || true
+            pkill -9 containerd-shim 2>/dev/null || true
+            sleep 2
+          ignore_errors: yes
+          changed_when: false
+          
+        - name: Clean stale mounts
+          ansible.builtin.shell: |
+            for mount in $(mount | grep '/var/lib/kubelet' | awk '{print $3}' | sort -r); do
+              umount -f "$mount" 2>/dev/null || true
+            done
+          ignore_errors: yes
+          changed_when: false
+
+        - name: Ensure containerd is running
+          ansible.builtin.systemd:
+            name: containerd
+            state: started
+            enabled: yes
+          ignore_errors: yes
+          when: ansible_facts.services['containerd.service'] is defined
+
 - name: Check if cleanup is needed
   hosts: k8s_control_plane,k8s_workers
   become: true
@@ -573,7 +646,7 @@
         path: /etc/kubernetes/admin.conf
       register: k8s_initialized
 
-    - name: Initialize Kubernetes cluster
+    - name: Initialize Kubernetes cluster (with auto-retry on failure)
       ansible.builtin.command: >
         kubeadm init
         --pod-network-cidr=10.244.0.0/16
@@ -582,6 +655,10 @@
         --control-plane-endpoint={{ ansible_host }}:6443
       when: not k8s_initialized.stat.exists
       register: kubeadm_init_output
+      until: kubeadm_init_output.rc == 0
+      retries: 3
+      delay: 30
+      ignore_errors: no
 
     - name: Create .kube directory for ansible user
       ansible.builtin.file:

@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FINAL - Increased all timeouts for stability (60s settle, 180s recovery, 150s pause)
+#Trigger: BULLETPROOF MODE - Auto-recovery, APT pre-config, aggressive retries
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
