@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Retry deployment with all fixes
+#Trigger: FORCE RESET deployment - clean slate
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
