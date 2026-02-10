@@ -1303,6 +1303,86 @@
       ansible.builtin.debug:
         msg: "{{ join_result.stdout_lines if join_result is defined and join_result.stdout_lines is defined else 'Node already registered in cluster - skipping join' }}"
 
+    - name: IMMEDIATE - Wait for join process to settle
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: "Worker joined - waiting 30s for processes to settle..."
+
+    - name: IMMEDIATE - Check if API server survived the join
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
+        port: 6443
+        timeout: 10
+        state: started
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: api_port_after_join
+      failed_when: false
+
+    - name: IMMEDIATE - API Recovery if crashed during join
+      block:
+        - name: Display API crash detected
+          ansible.builtin.debug:
+            msg: "⚠️ API server crashed during worker join - initiating immediate recovery"
+
+        - name: Stop containerd on master for full reset
+          ansible.builtin.systemd:
+            name: containerd
+            state: stopped
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: true
+
+        - name: Wait for containerd shutdown
+          ansible.builtin.pause:
+            seconds: 10
+
+        - name: Start containerd on master
+          ansible.builtin.systemd:
+            name: containerd
+            state: started
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: true
+
+        - name: Wait for containerd initialization
+          ansible.builtin.pause:
+            seconds: 15
+
+        - name: Restart kubelet on master to restart static pods
+          ansible.builtin.systemd:
+            name: kubelet
+            state: restarted
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: true
+
+        - name: Wait for static pods to restart (etcd + API server)
+          ansible.builtin.pause:
+            seconds: 120
+            prompt: "Waiting 120 seconds for etcd and API server static pods to fully restart..."
+
+        - name: Verify API server port is back up
+          ansible.builtin.wait_for:
+            host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
+            port: 6443
+            timeout: 180
+            state: started
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+
+        - name: Verify API server is responding to health checks
+          ansible.builtin.command: kubectl get --raw /healthz
+          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+          become: false
+          environment:
+            KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+          register: api_health_recovered
+          until: api_health_recovered.rc == 0
+          retries: 30
+          delay: 10
+          changed_when: false
+
+        - name: Display recovery success
+          ansible.builtin.debug:
+            msg: "✅ API server recovered successfully after worker join"
+      when: api_port_after_join.failed or api_port_after_join.elapsed is undefined
+
     - name: If join failed, capture kubelet and API diagnostics
       block:
         - name: Get kubelet logs on failure
