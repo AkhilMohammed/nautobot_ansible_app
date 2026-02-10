@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Fix stuck Flannel pods + API recovery
+#Trigger: Improved Flannel pod wait logic
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
