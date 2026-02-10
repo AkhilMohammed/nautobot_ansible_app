@@ -894,16 +894,50 @@
       retries: 3
       delay: 10
 
+    - name: Wait for Flannel pod to be scheduled on this worker
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "NO_POD"
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: flannel_pod_scheduled
+      until: flannel_pod_scheduled.stdout != "NO_POD" and flannel_pod_scheduled.stdout != ""
+      retries: 60
+      delay: 5
+      changed_when: false
+      failed_when: false
+
+    - name: Get Flannel pod status on this worker
+      ansible.builtin.shell: |
+        POD_NAME=$(kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -z "$POD_NAME" ]; then
+          echo "STATUS=NO_POD"
+        else
+          STATUS=$(kubectl get pod $POD_NAME -n kube-flannel -o jsonpath='{.status.phase}')
+          echo "POD=$POD_NAME STATUS=$STATUS"
+        fi
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      become: false
+      environment:
+        KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
+      register: flannel_pod_status
+      changed_when: false
+
+    - name: Display Flannel pod status
+      ansible.builtin.debug:
+        msg: "Flannel on {{ inventory_hostname }}: {{ flannel_pod_status.stdout }}"
+
     - name: Wait for Flannel pod to be running on this worker
       ansible.builtin.shell: |
-        kubectl get pods -n kube-flannel -o wide --field-selector spec.nodeName={{ inventory_hostname }} | grep Running
+        kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].status.phase}'
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       become: false
       environment:
         KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
       register: worker_flannel_check
-      until: worker_flannel_check.rc == 0
-      retries: 30
+      until: worker_flannel_check.stdout == "Running"
+      retries: 40
       delay: 5
       changed_when: false
 
