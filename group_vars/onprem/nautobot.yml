@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Aggressive recovery + 180s stabilization
+#Trigger: Smart conditional cleanup (only when needed)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

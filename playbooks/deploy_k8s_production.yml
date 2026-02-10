@@ -2,8 +2,40 @@
 # Production-Ready Kubernetes Nautobot Deployment with Helm
 # Fully automated: Installs K8s, Helm, Ingress, and deploys Nautobot
 # Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
+# Force cleanup: ansible-playbook ... -e force_cleanup=true
 
-- name: COMPLETE SYSTEM CLEANUP - Start Fresh
+- name: Check if cleanup is needed
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: false
+  vars_files:
+    - "../group_vars/onprem/nautobot.yml"
+
+  tasks:
+    - name: Check if Kubernetes is already running healthy
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf_exists
+
+    - name: Check if kubelet is running
+      ansible.builtin.systemd:
+        name: kubelet
+      register: kubelet_status
+      ignore_errors: yes
+
+    - name: Determine if cleanup is needed
+      ansible.builtin.set_fact:
+        needs_cleanup: "{{ force_cleanup | default(false) | bool or (kubelet_conf_exists.stat.exists and kubelet_status.status.ActiveState != 'active') }}"
+
+    - name: Display cleanup decision
+      ansible.builtin.debug:
+        msg:
+          - "Cleanup decision: {{ 'YES - will cleanup' if needs_cleanup else 'NO - cluster appears healthy, skipping cleanup' }}"
+          - "Force cleanup flag: {{ force_cleanup | default('not set') }}"
+          - "kubelet.conf exists: {{ kubelet_conf_exists.stat.exists }}"
+          - "kubelet status: {{ kubelet_status.status.ActiveState if kubelet_status.status is defined else 'not running' }}"
+
+- name: COMPLETE SYSTEM CLEANUP - Only when needed
   hosts: k8s_control_plane,k8s_workers
   become: true
   gather_facts: false
@@ -14,18 +46,21 @@
     - name: Display cleanup start
       ansible.builtin.debug:
         msg: "🧹 Starting complete system cleanup for pristine deployment..."
+      when: needs_cleanup | default(false) | bool
 
     - name: Stop kubelet service
       ansible.builtin.systemd:
         name: kubelet
         state: stopped
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Stop containerd service
       ansible.builtin.systemd:
         name: containerd
         state: stopped
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Kill all Kubernetes and container processes
       ansible.builtin.shell: |
@@ -45,24 +80,28 @@
         fuser -k 2380/tcp || true
         sleep 3
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Unmask kubelet if masked
       ansible.builtin.systemd:
         name: kubelet
         masked: no
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Disable kubelet service
       ansible.builtin.systemd:
         name: kubelet
         enabled: no
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Reset Kubernetes with kubeadm
       ansible.builtin.command: kubeadm reset -f --cleanup-tmp-dir
       register: kubeadm_reset
       ignore_errors: yes
       changed_when: false
+      when: needs_cleanup | default(false) | bool
 
     - name: Unmount all kubelet and containerd mounts
       ansible.builtin.shell: |
@@ -71,6 +110,7 @@
         done
         sleep 2
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Remove ALL Kubernetes directories and files
       ansible.builtin.shell: |
@@ -90,6 +130,7 @@
         rm -rf /tmp/kubeadm-*
         rm -rf /tmp/kube*
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Remove CNI network interfaces
       ansible.builtin.shell: |
@@ -101,6 +142,7 @@
           ip link delete $iface 2>/dev/null || true
         done
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Flush iptables rules
       ansible.builtin.shell: |
@@ -109,22 +151,26 @@
         iptables -t mangle -F
         iptables -X
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Clean containerd data
       ansible.builtin.shell: |
         rm -rf /var/lib/containerd/*
         rm -rf /run/containerd/*
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Restart containerd for clean state
       ansible.builtin.systemd:
         name: containerd
         state: restarted
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Wait for containerd to stabilize
       ansible.builtin.pause:
         seconds: 5
+      when: needs_cleanup | default(false) | bool
 
     - name: Verify cleanup - check critical directories removed
       ansible.builtin.stat:
@@ -135,10 +181,17 @@
         - /var/lib/kubelet
         - /var/lib/etcd
       ignore_errors: yes
+      when: needs_cleanup | default(false) | bool
 
     - name: Display cleanup results
       ansible.builtin.debug:
         msg: "✅ System cleanup complete - all nodes ready for fresh deployment"
+      when: needs_cleanup | default(false) | bool
+
+    - name: Display skip message
+      ansible.builtin.debug:
+        msg: "⏭️  Skipping cleanup - cluster appears healthy and force_cleanup not set"
+      when: not (needs_cleanup | default(false) | bool)
 
 - name: Pre-flight Validation - System Requirements Check
   hosts: k8s_control_plane,k8s_workers
