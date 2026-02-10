@@ -315,13 +315,18 @@
       when: k8s_initialized.stat.exists
       register: kubeadm_reset_output
 
-    - name: Remove corrupt Kubernetes state files after reset
+    - name: CRITICAL - Always remove etcd data to prevent corruption
+      ansible.builtin.file:
+        path: /var/lib/etcd
+        state: absent
+      register: etcd_cleanup
+
+    - name: Remove other Kubernetes state files after reset
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/kubernetes
-        - /var/lib/etcd
         - /var/lib/kubelet
         - ~/.kube
         - /root/.kube

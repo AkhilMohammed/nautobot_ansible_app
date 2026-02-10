@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: Switch to Calico CNI + Force Reset
+#Trigger: FIX - Always clean etcd to prevent corruption
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
