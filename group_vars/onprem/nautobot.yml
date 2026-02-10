@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FIX worker kubelet TLS Bootstrap timeout
+#Trigger: FIX undefined variable in worker join
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

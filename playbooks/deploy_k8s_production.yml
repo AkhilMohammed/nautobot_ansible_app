@@ -799,14 +799,6 @@
       delay: 20
       until: join_result.rc == 0
       when: (node_registered is not defined) or (node_registered.rc != 0)
-      when: 
-        - (node_registered is not defined) or (node_registered.rc != 0)
-        - (final_check.stat.exists) or (join_result is defined and join_result.rc != 0)
-
-    - name: Set join result fact
-      ansible.builtin.set_fact:
-        join_result: "{{ join_result if join_result is defined and join_result.stdout is defined else join_result_forced }}"
-      when: (node_registered is not defined) or (node_registered.rc != 0)
 
     - name: Display join result
       ansible.builtin.debug:
