@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-#Trigger: FORCE RESET deployment - clean slate
+#Trigger: Switch to Calico CNI + Force Reset
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"

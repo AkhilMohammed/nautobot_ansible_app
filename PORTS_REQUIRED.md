@@ -19,11 +19,12 @@
 | **10250** | TCP | Kubelet API | Master, self |
 | **30000-32767** | TCP | NodePort Services | External clients |
 
-### Flannel CNI
+### Calico CNI
 | Port | Protocol | Purpose | Used By |
 |------|----------|---------|---------|
-| **8472** | UDP | VXLAN overlay network | All nodes |
-| **8285** | UDP | Flannel health checks | All nodes |
+| **179** | TCP | BGP protocol (routing) | All nodes |
+| **4789** | UDP | VXLAN overlay network (default) | All nodes |
+| **5473** | TCP | Calico Typha (optional) | All nodes |
 
 ## Application Ports
 
@@ -57,8 +58,8 @@
 - Allow TCP 6443 (API server)
 
 ### All Nodes → All Nodes
-- Allow UDP 8472 (Flannel VXLAN)
-- Allow UDP 8285 (Flannel health)
+- Allow TCP 179 (Calico BGP)
+- Allow UDP 4789 (Calico VXLAN)
 - Allow TCP 10250 (kubelet)
 
 ### Workers → Database/Redis
@@ -80,7 +81,7 @@
 - k8s.io: 443/TCP (Download Kubernetes packages)
 
 **INTERNAL CLUSTER:**
-- All nodes must communicate on ports: 6443, 10250, 8472/UDP, 8285/UDP
+- All nodes must communicate on ports: 6443, 10250, 179/TCP (BGP), 4789/UDP (VXLAN)
 
 **APPLICATION ACCESS:**
 - Nautobot accessible on: http://<any-worker-ip>:30080

@@ -428,27 +428,27 @@
       delay: 10
       changed_when: false
 
-    - name: Check if Flannel CNI is installed
-      ansible.builtin.command: kubectl get daemonset kube-flannel-ds -n kube-flannel
+    - name: Check if Calico CNI is installed
+      ansible.builtin.command: kubectl get daemonset calico-node -n kube-system
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_check
+      register: calico_check
       failed_when: false
       changed_when: false
 
-    - name: Install Flannel CNI network plugin
+    - name: Install Calico CNI network plugin (replaces Flannel)
       ansible.builtin.command: >
-        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: flannel_check.rc != 0
+      when: calico_check.rc != 0
 
-    - name: Check if Flannel DaemonSet has stuck/corrupted pods
+    - name: Check if Calico DaemonSet has stuck/corrupted pods
       ansible.builtin.shell: |
-        DESIRED=$(kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
-        READY=$(kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
+        DESIRED=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
+        READY=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
         if [ "$DESIRED" -gt "0" ] && [ "$READY" -eq "0" ]; then
           # Pods exist but none are ready - likely stuck from previous deployment
           echo "STUCK"
@@ -458,52 +458,52 @@
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_stuck_check
+      register: calico_stuck_check
       changed_when: false
       failed_when: false
 
-    - name: Display Flannel status
+    - name: Display Calico status
       ansible.builtin.debug:
-        msg: "Flannel DaemonSet status: {{ flannel_stuck_check.stdout }} (pods may be stuck from previous failed deployment)"
+        msg: "Calico DaemonSet status: {{ calico_stuck_check.stdout }} (pods may be stuck from previous failed deployment)"
 
-    - name: Delete stuck Flannel resources to force clean restart
+    - name: Delete stuck Calico resources to force clean restart
       ansible.builtin.shell: |
-        kubectl delete daemonset kube-flannel-ds -n kube-flannel --ignore-not-found=true
-        kubectl delete pods --all -n kube-flannel --ignore-not-found=true
+        kubectl delete daemonset calico-node -n kube-system --ignore-not-found=true
+        kubectl delete pods -n kube-system -l k8s-app=calico-node --ignore-not-found=true
         sleep 5
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: flannel_stuck_check.stdout == "STUCK"
+      when: calico_stuck_check.stdout == "STUCK"
 
-    - name: Reinstall Flannel after cleanup
+    - name: Reinstall Calico after cleanup
       ansible.builtin.shell: |
-        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: flannel_stuck_check.stdout == "STUCK"
+      when: calico_stuck_check.stdout == "STUCK"
 
-    - name: Wait for Flannel DaemonSet to be available
+    - name: Wait for Calico DaemonSet to be available
       ansible.builtin.shell: |
-        kubectl get daemonset kube-flannel-ds -n kube-flannel -o jsonpath='{.status.numberReady}'
+        kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}'
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_ready
-      until: flannel_ready.stdout | int > 0
+      register: calico_ready
+      until: calico_ready.stdout | int > 0
       retries: 30
       delay: 10
       changed_when: false
 
-    - name: Verify Flannel pods are running on master
+    - name: Verify Calico pods are running on master
       ansible.builtin.shell: |
-        kubectl get pods -n kube-flannel -o wide | grep onprem-k8s-master | grep Running
+        kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | grep onprem-k8s-master | grep Running
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_pod_check
-      until: flannel_pod_check.rc == 0
+      register: calico_pod_check
+      until: calico_pod_check.rc == 0
       retries: 20
       delay: 5
       changed_when: false
@@ -571,7 +571,7 @@
           Master Node: {{ ansible_host }}
           Pod Network CIDR: 10.244.0.0/16
           Service CIDR: 10.96.0.0/12
-          CNI: Flannel
+          CNI: Calico v3.27.0
           Ingress: Nginx (NodePort 30080/30443)
           
           # To restore cluster access from this backup:
@@ -743,6 +743,7 @@
         rm -rf /var/lib/calico
         rm -rf /opt/cni
         rm -rf /run/flannel
+        rm -rf /var/run/calico
       when: (node_registered is not defined) or (node_registered.rc != 0)
       ignore_errors: yes
 
@@ -837,7 +838,7 @@
       changed_when: false
       when: (node_registered is not defined) or (node_registered.rc != 0)
 
-    - name: Check API server health before Flannel check
+    - name: Check API server health before Calico check
       ansible.builtin.wait_for:
         host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
         port: 6443
@@ -866,49 +867,49 @@
       retries: 3
       delay: 10
 
-    - name: Wait for Flannel pod to be scheduled on this worker
+    - name: Wait for Calico pod to be scheduled on this worker
       ansible.builtin.shell: |
-        kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "NO_POD"
+        kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "NO_POD"
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       become: false
       environment:
         KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: flannel_pod_scheduled
-      until: flannel_pod_scheduled.stdout != "NO_POD" and flannel_pod_scheduled.stdout != ""
+      register: calico_pod_scheduled
+      until: calico_pod_scheduled.stdout != "NO_POD" and calico_pod_scheduled.stdout != ""
       retries: 60
       delay: 5
       changed_when: false
       failed_when: false
 
-    - name: Get Flannel pod status on this worker
+    - name: Get Calico pod status on this worker
       ansible.builtin.shell: |
-        POD_NAME=$(kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        POD_NAME=$(kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -z "$POD_NAME" ]; then
           echo "STATUS=NO_POD"
         else
-          STATUS=$(kubectl get pod $POD_NAME -n kube-flannel -o jsonpath='{.status.phase}')
+          STATUS=$(kubectl get pod $POD_NAME -n kube-system -o jsonpath='{.status.phase}')
           echo "POD=$POD_NAME STATUS=$STATUS"
         fi
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       become: false
       environment:
         KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: flannel_pod_status
+      register: calico_pod_status
       changed_when: false
 
-    - name: Display Flannel pod status
+    - name: Display Calico pod status
       ansible.builtin.debug:
-        msg: "Flannel on {{ inventory_hostname }}: {{ flannel_pod_status.stdout }}"
+        msg: "Calico on {{ inventory_hostname }}: {{ calico_pod_status.stdout }}"
 
-    - name: Wait for Flannel pod to be running on this worker
+    - name: Wait for Calico pod to be running on this worker
       ansible.builtin.shell: |
-        kubectl get pods -n kube-flannel --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].status.phase}'
+        kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName={{ inventory_hostname }} -o jsonpath='{.items[0].status.phase}'
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       become: false
       environment:
         KUBECONFIG: "/home/{{ hostvars[groups['k8s_control_plane'][0]]['ansible_user'] }}/.kube/config"
-      register: worker_flannel_check
-      until: worker_flannel_check.stdout == "Running"
+      register: worker_calico_check
+      until: worker_calico_check.stdout == "Running"
       retries: 40
       delay: 5
       changed_when: false
@@ -1000,13 +1001,13 @@
       delay: 10
       changed_when: false
 
-    - name: Verify all Flannel pods are running
+    - name: Verify all Calico pods are running
       ansible.builtin.shell: |
-        kubectl get pods -n kube-flannel -o wide | tail -n +2 | awk '{print $3}' | grep -v Running || true
+        kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | tail -n +2 | awk '{print $3}' | grep -v Running || true
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_pods_status
-      until: flannel_pods_status.stdout == ""
+      register: calico_pods_status
+      until: calico_pods_status.stdout == ""
       retries: 30
       delay: 10
       changed_when: false
@@ -1090,11 +1091,11 @@
       register: control_plane_pods
       changed_when: false
 
-    - name: Get Flannel network pods status
-      ansible.builtin.command: kubectl get pods -n kube-flannel -o wide
+    - name: Get Calico network pods status
+      ansible.builtin.command: kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: flannel_pods
+      register: calico_pods
       changed_when: false
 
     - name: Verify pod network connectivity with a test pod
@@ -1120,8 +1121,8 @@
           - "🔧 Control Plane Pods:"
           - "{{ control_plane_pods.stdout_lines }}"
           - ""
-          - "🌐 Network Pods (Flannel):"
-          - "{{ flannel_pods.stdout_lines }}"
+          - "🌐 Network Pods (Calico):"
+          - "{{ calico_pods.stdout_lines }}"
           - ""
           - "✅ Cluster is healthy and ready for application deployment!"
 
@@ -1359,7 +1360,7 @@
           - "📊 Cluster Information:"
           - "  Master Node (Load Balancer): {{ ansible_host }}"
           - "  Kubernetes Version: 1.28"
-          - "  CNI: Flannel (10.244.0.0/16)"
+          - "  CNI: Calico v3.27.0 (10.244.0.0/16)"
           - "  Service CIDR: 10.96.0.0/12"
           - "  Ingress: Nginx (NodePort 30080/30443)"
           - ""
