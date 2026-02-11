@@ -1500,53 +1500,48 @@
 
     - name: IMMEDIATE - Wait for join process to settle
       ansible.builtin.pause:
-        seconds: 60
-        prompt: "Worker joined - waiting 60s for processes to settle and API to stabilize..."
+        seconds: 90
+        prompt: "Worker joined - waiting 90s for processes to settle and API to stabilize..."
 
-    - name: IMMEDIATE - Check if API server survived the join
+    - name: IMMEDIATE - Verify API server health after join
+      ansible.builtin.command: kubectl get nodes
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: api_health_check
+      retries: 10
+      delay: 10
+      until: api_health_check.rc == 0
+      failed_when: false
+      become: false
+
+    - name: IMMEDIATE - Check if API server port is accessible
       ansible.builtin.wait_for:
         host: "{{ hostvars[groups['k8s_control_plane'][0]]['ansible_host'] }}"
         port: 6443
-        timeout: 20
+        timeout: 30
         state: started
       delegate_to: "{{ groups['k8s_control_plane'][0] }}"
       register: api_port_after_join
       failed_when: false
 
-    - name: IMMEDIATE - API Recovery if crashed during join
+    - name: IMMEDIATE - API Recovery if crashed during join (SAFER - no containerd restart)
       block:
-        - name: Display API crash detected
+        - name: Display API issue detected
           ansible.builtin.debug:
-            msg: "⚠️ API server crashed during worker join - initiating immediate recovery"
+            msg: "⚠️ API server appears unstable after worker join - attempting gentle recovery"
 
-        - name: Stop containerd on master for full reset
-          ansible.builtin.systemd:
-            name: containerd
-            state: stopped
-          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
-          become: true
-
-        - name: Wait for containerd shutdown
-          ansible.builtin.pause:
-            seconds: 10
-
-        - name: Start containerd on master
-          ansible.builtin.systemd:
-            name: containerd
-            state: started
-          delegate_to: "{{ groups['k8s_control_plane'][0] }}"
-          become: true
-
-        - name: Wait for containerd initialization
-          ansible.builtin.pause:
-            seconds: 15
-
-        - name: Restart kubelet on master to restart static pods
+        - name: Restart kubelet on master ONLY (preserves containers)
           ansible.builtin.systemd:
             name: kubelet
             state: restarted
           delegate_to: "{{ groups['k8s_control_plane'][0] }}"
           become: true
+
+        - name: Wait for kubelet to restart static pods
+          ansible.builtin.pause:
+            seconds: 30
+            prompt: "Waiting 30s for static pods to restart after kubelet restart..."
 
         - name: Wait for static pods to restart (etcd + API server)
           ansible.builtin.pause:
