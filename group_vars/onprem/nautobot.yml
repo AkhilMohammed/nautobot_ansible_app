@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-# Trigger #82: SSH fix verified - testing full deployment with working passwordless SSH
+# Trigger #84: Clean deployment after manual cluster reset (API server crash recovery)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
