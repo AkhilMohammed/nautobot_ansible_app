@@ -720,13 +720,13 @@
         timeout: 120
         state: started
 
-    - name: "CRITICAL: Install Calico IMMEDIATELY to prevent API instability"
+    - name: "CRITICAL: Install Flannel CNI IMMEDIATELY (more stable than Calico on Ubuntu 25.10)"
       ansible.builtin.shell: |
         # Wait for API to respond to at least one request
         for i in {1..30}; do
           if kubectl cluster-info 2>&1 | grep -q "Kubernetes control plane"; then
-            echo "API is responding, installing Calico now..."
-            kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+            echo "API is responding, installing Flannel now..."
+            kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
             exit 0
           fi
           sleep 2
@@ -736,21 +736,21 @@
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: calico_install_early
+      register: flannel_install_early
       retries: 2
       delay: 10
 
-    - name: "Wait for Calico node pods to start (not ready yet, just scheduled)"
+    - name: "Wait for Flannel daemonset pods to start (not ready yet, just scheduled)"
       ansible.builtin.shell: |
         for i in {1..60}; do
-          pod_count=$(kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l)
+          pod_count=$(kubectl get pods -n kube-flannel -l app=flannel --no-headers 2>/dev/null | wc -l)
           if [ $pod_count -gt 0 ]; then
-            echo "Calico pods detected: $pod_count"
+            echo "Flannel pods detected: $pod_count"
             exit 0
           fi
           sleep 2
         done
-        echo "WARNING: No Calico pods found after 2 minutes"
+        echo "WARNING: No Flannel pods found after 2 minutes"
         exit 0
       become_user: "{{ ansible_user }}"
       environment:
@@ -892,7 +892,8 @@
       changed_when: false
 
     - name: Show Calico status
-      ansible.builtin.debug:        msg: "{{ calico_daemonset_status.stdout_lines | default(['Calico DaemonSet not found']) }}"
+      ansible.builtin.debug:
+        msg: "{{ calico_daemonset_status.stdout_lines | default(['Calico DaemonSet not found']) }}"
 
     - name: Wait 180 seconds for API server to fully stabilize after all worker joins
       ansible.builtin.pause:
