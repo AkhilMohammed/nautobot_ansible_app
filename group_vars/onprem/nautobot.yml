@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-# Trigger #87: ACTUAL ROOT CAUSE FIX - Calico CIDR (192.168.0.0/16) not Flannel CIDR
+# Trigger #88: YAML syntax fixed + Calico CIDR fix (192.168.0.0/16)
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
