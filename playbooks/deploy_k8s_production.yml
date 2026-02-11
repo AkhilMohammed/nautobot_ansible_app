@@ -548,12 +548,17 @@
         url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
         dest: /tmp/kubernetes-release.key
         mode: '0644'
+        force: yes
+
+    - name: Check if GPG keyring already exists
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: k8s_keyring
 
     - name: Add Kubernetes apt signing key
       ansible.builtin.shell: |
         gpg --dearmor < /tmp/kubernetes-release.key > /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-      args:
-        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      when: not k8s_keyring.stat.exists
 
     - name: Add Kubernetes apt repository
       ansible.builtin.apt_repository:
@@ -609,23 +614,42 @@
         path: /etc/kubernetes/admin.conf
       register: k8s_initialized
 
-    - name: FORCE RESET - Clean slate for troubled cluster
-      ansible.builtin.set_fact:
-        force_cluster_reset: true
-
-    - name: Display force reset decision
-      ansible.builtin.debug:
-        msg: "FORCING FULL CLUSTER RESET to eliminate corruption from previous failed deployments"
-
-    - name: Reset Kubernetes cluster (forced for clean deployment)
-      ansible.builtin.command: kubeadm reset -f
+    - name: Check if API server is healthy (if cluster exists)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        timeout: 5
+        state: started
+      register: api_server_check
       when: k8s_initialized.stat.exists
+      failed_when: false
+      changed_when: false
+
+    - name: Decide if cluster reset is needed
+      ansible.builtin.set_fact:
+        force_cluster_reset: "{{ k8s_initialized.stat.exists and api_server_check.failed | default(false) }}"
+
+    - name: Display reset decision
+      ansible.builtin.debug:
+        msg: >-
+          {% if not k8s_initialized.stat.exists %}
+          No cluster detected - will initialize fresh cluster
+          {% elif force_cluster_reset %}
+          Cluster exists but API server is broken - will reset and reinitialize
+          {% else %}
+          Healthy cluster detected - skipping initialization
+          {% endif %}
+
+    - name: Reset Kubernetes cluster (only if broken)
+      ansible.builtin.command: kubeadm reset -f
+      when: force_cluster_reset
       register: kubeadm_reset_output
 
-    - name: CRITICAL - Always remove etcd data to prevent corruption
+    - name: Remove etcd data (only after reset)
       ansible.builtin.file:
         path: /var/lib/etcd
         state: absent
+      when: kubeadm_reset_output is changed
       register: etcd_cleanup
 
     - name: Remove other Kubernetes state files after reset
@@ -637,9 +661,7 @@
         - /var/lib/kubelet
         - ~/.kube
         - /root/.kube
-      when:
-        - kubeadm_reset_output is defined
-        - kubeadm_reset_output is changed
+      when: kubeadm_reset_output is changed
 
     - name: Re-check if Kubernetes is initialized after reset
       ansible.builtin.stat:
