@@ -945,52 +945,28 @@
               - "=== API SERVER LOGS (last 50 lines) ==="
               - "{{ apiserver_logs.stdout_lines }}"
 
-        - name: AGGRESSIVE RECOVERY - Stop containerd to reset everything
-          ansible.builtin.systemd:
-            name: containerd
-            state: stopped
-          become: true
-
-        - name: Wait for all processes to stop
-          ansible.builtin.pause:
-            seconds: 10
-
-        - name: AGGRESSIVE RECOVERY - Restart containerd
-          ansible.builtin.systemd:
-            name: containerd
-            state: started
-          become: true
-
-        - name: Wait for containerd to initialize
-          ansible.builtin.pause:
-            seconds: 15
-
-        - name: AGGRESSIVE RECOVERY - Restart kubelet
+        # DISABLED - Aggressive containerd restart caused crash loop deadlock in Run #90
+        # Restarting containerd wipes all containers, breaking etcd/API bootstrap
+        # Using safer kubelet-only restart instead
+        
+        - name: SAFER RECOVERY - Restart kubelet only (preserves containers)
           ansible.builtin.systemd:
             name: kubelet
             state: restarted
           become: true
 
-        - name: Wait for static pods to restart (critical)
+        - name: Wait for kubelet to restart static pods
           ansible.builtin.pause:
-            seconds: 90
-            prompt: "Waiting 90 seconds for etcd and API server static pods to fully restart..."
+            seconds: 45
+            prompt: "Waiting 45 seconds for kubelet to restart static pods..."
 
-        - name: Check if static pods are running
-          ansible.builtin.command: crictl pods --state Ready
-          register: static_pods_running
-          retries: 10
-          delay: 10
-          until: "'kube-apiserver' in static_pods_running.stdout and 'etcd' in static_pods_running.stdout"
-          changed_when: false
-          failed_when: false
-
-        - name: Wait for API server to come back up
+        - name: Wait for API server port to come back up
           ansible.builtin.wait_for:
             host: "{{ ansible_host }}"
             port: 6443
-            timeout: 180
+            timeout: 120
             state: started
+          failed_when: false
 
         - name: Verify API server recovered
           ansible.builtin.command: kubectl get --raw /healthz
@@ -998,10 +974,17 @@
           environment:
             KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
           register: api_health_recovered
-          retries: 20
+          retries: 15
           delay: 10
           until: api_health_recovered.rc == 0
-      when: api_health_post_join.rc != 0 or api_port_check.failed
+          failed_when: false
+        
+        - name: Display recovery result
+          ansible.builtin.debug:
+            msg: "API server recovery {{ 'SUCCEEDED' if api_health_recovered.rc == 0 else 'FAILED - manual intervention may be needed' }}"
+      
+      # Only trigger recovery on confirmed API failure (not temporary unavailability)
+      when: api_health_post_join.rc != 0 and api_port_check.failed
 
     - name: Final API health check before Calico verification
       ansible.builtin.command: kubectl get nodes
