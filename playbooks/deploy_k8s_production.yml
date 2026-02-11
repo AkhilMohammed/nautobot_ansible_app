@@ -698,7 +698,7 @@
         timeout: 120
         state: started
 
-    - name: CRITICAL: Extended API server stabilization wait
+    - name: "CRITICAL: Extended API server stabilization wait"
       ansible.builtin.pause:
         seconds: 60
         prompt: "Waiting 60 seconds for API server to fully stabilize before proceeding..."
@@ -767,7 +767,7 @@
       delay: 10
       changed_when: false
 
-    - name: CRITICAL: Check memory availability before Calico
+    - name: "CRITICAL: Check memory availability before Calico"
       ansible.builtin.shell: |
         free -m | awk 'NR==2{printf "Memory: %s/%sMB (%.2f%%)\n", $3,$2,$3*100/$2 }'
         available=$(free -m | awk 'NR==2{print $7}')
@@ -784,7 +784,7 @@
       ansible.builtin.debug:
         msg: "{{ memory_check.stdout_lines }}"
 
-    - name: CRITICAL: Final control plane health check before Calico
+    - name: "CRITICAL: Final control plane health check before Calico"
       ansible.builtin.shell: |
         # Check all control plane pods
         APISERVER=$(kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
@@ -1113,7 +1113,7 @@
           changed_when: false
           failed_when: false
 
-        - name: Final verification - if Calico still not ready, report and continue
+        - name: "Final verification - if Calico still not ready, report and continue"
           ansible.builtin.debug:
             msg: "WARNING: Calico may not be fully ready but continuing deployment. Manual verification required."
           when: calico_ready_retry.rc != 0 or (calico_ready_retry.stdout | default('0') | int == 0)
