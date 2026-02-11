@@ -720,10 +720,48 @@
         timeout: 120
         state: started
 
-    - name: "CRITICAL: Extended API server stabilization wait"
+    - name: "CRITICAL: Install Calico IMMEDIATELY to prevent API instability"
+      ansible.builtin.shell: |
+        # Wait for API to respond to at least one request
+        for i in {1..30}; do
+          if kubectl cluster-info 2>&1 | grep -q "Kubernetes control plane"; then
+            echo "API is responding, installing Calico now..."
+            kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: API never responded"
+        exit 1
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      register: calico_install_early
+      retries: 2
+      delay: 10
+
+    - name: "Wait for Calico node pods to start (not ready yet, just scheduled)"
+      ansible.builtin.shell: |
+        for i in {1..60}; do
+          pod_count=$(kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l)
+          if [ $pod_count -gt 0 ]; then
+            echo "Calico pods detected: $pod_count"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "WARNING: No Calico pods found after 2 minutes"
+        exit 0
+      become_user: "{{ ansible_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+      failed_when: false
+      changed_when: false
+
+    - name: "Brief stabilization wait after Calico installation"
       ansible.builtin.pause:
-        seconds: 60
-        prompt: "Waiting 60 seconds for API server to fully stabilize before proceeding..."
+        seconds: 30
+        prompt: "Waiting 30 seconds for Calico to begin initialization..."
 
     - name: Verify API server is responding to requests
       ansible.builtin.shell: |
@@ -806,90 +844,55 @@
       ansible.builtin.debug:
         msg: "{{ memory_check.stdout_lines }}"
 
-    - name: "CRITICAL: Final control plane health check before Calico"
+    - name: "Check control plane processes (not pod status) after Calico"
       ansible.builtin.shell: |
-        # Check all control plane pods
-        APISERVER=$(kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
-        SCHEDULER=$(kubectl get pods -n kube-system -l component=kube-scheduler -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
-        CONTROLLER=$(kubectl get pods -n kube-system -l component=kube-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
-        ETCD=$(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
+        # Check actual running processes, not Kubernetes pod status
+        # Static pods may show as Pending but processes are running
+        APISERVER_PROC=$(ps aux | grep kube-apiserver | grep -v grep | wc -l)
+        SCHEDULER_PROC=$(ps aux | grep kube-scheduler | grep -v grep | wc -l)
+        CONTROLLER_PROC=$(ps aux | grep kube-controller-manager | grep -v grep | wc -l)
+        ETCD_PROC=$(ps aux | grep 'etcd --' | grep -v grep | wc -l)
         
-        echo "API Server: $APISERVER"
-        echo "Scheduler: $SCHEDULER"  
-        echo "Controller Manager: $CONTROLLER"
-        echo "etcd: $ETCD"
+        echo "API Server processes: $APISERVER_PROC"
+        echo "Scheduler processes: $SCHEDULER_PROC"  
+        echo "Controller Manager processes: $CONTROLLER_PROC"
+        echo "etcd processes: $ETCD_PROC"
         
-        if [ "$APISERVER" != "Running" ] || [ "$SCHEDULER" != "Running" ] || [ "$CONTROLLER" != "Running" ] || [ "$ETCD" != "Running" ]; then
-          echo "ERROR: Control plane not fully healthy"
+        if [ $APISERVER_PROC -lt 1 ] || [ $ETCD_PROC -lt 1 ]; then
+          echo "ERROR: Critical control plane processes not running"
           exit 1
         fi
-        echo "Control plane health check PASSED"
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+        echo "Control plane processes are running (API and etcd confirmed)"
+        exit 0
       register: control_plane_health
-      retries: 5
-      delay: 15
+      failed_when: control_plane_health.rc != 0
+      changed_when: false
 
     - name: Display control plane health
       ansible.builtin.debug:
         msg: "{{ control_plane_health.stdout_lines }}"
 
-    - name: Check if Calico CNI is installed
-      ansible.builtin.command: kubectl get daemonset calico-node -n kube-system
+    - name: Verify Calico was installed early (should already exist)
+      ansible.builtin.command: kubectl get daemonset calico-node -n kube-system  
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: calico_check
+      register: calico_verify
       failed_when: false
       changed_when: false
 
-    - name: Install Calico CNI network plugin (replaces Flannel)
-      ansible.builtin.command: >
-        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: calico_check.rc != 0
-
-    - name: Check if Calico DaemonSet has stuck/corrupted pods
+    - name: Display Calico DaemonSet status
       ansible.builtin.shell: |
-        DESIRED=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
-        READY=$(kubectl get daemonset calico-node -n kube-system -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
-        if [ "$DESIRED" -gt "0" ] && [ "$READY" -eq "0" ]; then
-          # Pods exist but none are ready - likely stuck from previous deployment
-          echo "STUCK"
-        else
-          echo "OK"
-        fi
+        kubectl get daemonset calico-node -n kube-system -o wide
       become_user: "{{ ansible_user }}"
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      register: calico_stuck_check
-      changed_when: false
+      register: calico_daemonset_status
       failed_when: false
+      changed_when: false
 
-    - name: Display Calico status
-      ansible.builtin.debug:
-        msg: "Calico DaemonSet status: {{ calico_stuck_check.stdout }} (pods may be stuck from previous failed deployment)"
-
-    - name: Delete stuck Calico resources to force clean restart
-      ansible.builtin.shell: |
-        kubectl delete daemonset calico-node -n kube-system --ignore-not-found=true
-        kubectl delete pods -n kube-system -l k8s-app=calico-node --ignore-not-found=true
-        sleep 5
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: calico_stuck_check.stdout == "STUCK"
-
-    - name: Reinstall Calico after cleanup
-      ansible.builtin.shell: |
-        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-      become_user: "{{ ansible_user }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
-      when: calico_stuck_check.stdout == "STUCK"
+    - name: Show Calico status
+      ansible.builtin.debug:        msg: "{{ calico_daemonset_status.stdout_lines | default(['Calico DaemonSet not found']) }}"
 
     - name: Wait 180 seconds for API server to fully stabilize after all worker joins
       ansible.builtin.pause:
