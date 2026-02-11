@@ -1,6 +1,6 @@
 ---
 # On-Premises Environment Configuration  
-# Trigger #84: Clean deployment after manual cluster reset (API server crash recovery)
+# Trigger #87: ACTUAL ROOT CAUSE FIX - Calico CIDR (192.168.0.0/16) not Flannel CIDR
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
