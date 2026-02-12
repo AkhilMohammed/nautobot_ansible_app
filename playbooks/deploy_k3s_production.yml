@@ -69,13 +69,15 @@
       shell: |
         set -e
         export INSTALL_K3S_SKIP_START=false
+        export INSTALL_K3S_VERSION="v1.30.7+k3s1"
         curl -sfL https://get.k3s.io | sh -s - server \
           --cluster-init \
           --write-kubeconfig-mode 644 \
           --tls-san {{ ansible_host }} \
           --node-name {{ inventory_hostname }} \
           --disable traefik \
-          --kube-apiserver-arg="--enable-admission-plugins=NodeRestriction"
+          --kube-apiserver-arg="--default-not-ready-toleration-seconds=30" \
+          --kube-apiserver-arg="--default-unreachable-toleration-seconds=30"
         
         # Verify installation
         if [ ! -f /usr/local/bin/k3s ]; then
