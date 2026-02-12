@@ -3,6 +3,8 @@ trigger:
     include:
       - main
       - feat/*
+    exclude:
+      - feat/*k3s*  # K3s deployments use GitHub Actions
 
 pool:
   name: 'ec2-agents'
