@@ -102,44 +102,86 @@
       retries: 3
       delay: 5
 
+    - name: Check K3s service status
+      command: systemctl status k3s
+      register: k3s_status
+      ignore_errors: yes
+
+    - name: Display K3s service status
+      debug:
+        var: k3s_status.stdout_lines
+
+    - name: Check K3s logs if service issues
+      command: journalctl -u k3s -n 50 --no-pager
+      register: k3s_logs
+      when: k3s_status.rc != 0
+
+    - name: Display K3s logs if failed
+      debug:
+        var: k3s_logs.stdout_lines
+      when: k3s_status.rc != 0
+
     - name: Wait for kubeconfig to be created
       wait_for:
         path: /etc/rancher/k3s/k3s.yaml
-        timeout: 60
+        timeout: 90
+
+    - name: Wait longer for K3s initialization
+      pause:
+        seconds: 20
+
+    - name: Check if API server process is running
+      shell: ps aux | grep -v grep | grep "k3s server"
+      register: k3s_process
+      ignore_errors: yes
+
+    - name: Display K3s process status
+      debug:
+        var: k3s_process.stdout_lines
 
     - name: Wait for K3s API server port
       wait_for:
         port: 6443
-        host: "{{ ansible_host }}"
-        delay: 10
-        timeout: 120
+        host: 127.0.0.1
+        delay: 5
+        timeout: 180
+        sleep: 5
 
     - name: Wait for K3s API server to respond
       shell: |
-        for i in {1..60}; do
-          if curl -k https://127.0.0.1:6443/livez &>/dev/null; then
+        for i in {1..90}; do
+          if curl -k https://127.0.0.1:6443/livez 2>&1 | grep -q "ok"; then
             echo "API server is responding"
             exit 0
           fi
-          echo "Waiting for API server... (attempt $i/60)"
-          sleep 2
+          if [ $((i % 10)) -eq 0 ]; then
+            echo "Still waiting for API server... (attempt $i/90)"
+            systemctl status k3s --no-pager | head -10 || true
+          fi
+          sleep 3
         done
-        echo "ERROR: API server did not respond"
+        echo "ERROR: API server did not respond after 270 seconds"
+        echo "=== K3s Service Status ==="
+        systemctl status k3s --no-pager || true
+        echo "=== K3s Logs (last 50 lines) ==="
+        journalctl -u k3s -n 50 --no-pager || true
         exit 1
       register: api_ready
-      retries: 2
-      delay: 10
+      retries: 1
+      delay: 15
 
     - name: Wait for node to be ready
       shell: |
         export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-        for i in {1..60}; do
+        for i in {1..90}; do
           if kubectl get nodes 2>&1 | grep -q "Ready"; then
-            echo "Node is ready"
+            echo "Node is ready!"
             kubectl get nodes
             exit 0
           fi
-          echo "Waiting for node to be ready... (attempt $i/60)"
+          if [ $((i % 15)) -eq 0 ]; then
+            echo "Still waiting for node... (attempt $i/90)"
+          fi
           sleep 3
         done
         echo "ERROR: Node did not become ready"
