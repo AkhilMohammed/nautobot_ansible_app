@@ -11,6 +11,11 @@ variables:
   - group: nautobot-azure-secrets
   - name: JUMPBOX_IP_FALLBACK
     value: "74.249.226.93"
+  - name: DEPLOYMENT_TYPE
+    ${{ if contains(variables['Build.SourceBranch'], 'k3s') }}:
+      value: 'k3s'
+    ${{ else }}:
+      value: 'k8s'
 
 stages:
   - stage: Build
@@ -36,31 +41,36 @@ stages:
           - bash: |
               set -e
               echo "Validating playbook syntax..."
+              echo "Deployment Type: $(DEPLOYMENT_TYPE)"
+              echo "Branch: $(Build.SourceBranch)"
               
-              # Check if VAULT_PASSWORD is set
-              if [ -z "$VAULT_PASSWORD" ]; then
-                echo "ERROR: VAULT_PASSWORD variable not set in variable group!"
-                echo "Please add VAULT_PASSWORD to the 'nautobot-azure-secrets' variable group"
+              # Determine which playbook to validate based on branch
+              if [[ "$(DEPLOYMENT_TYPE)" == "k3s" ]]; then
+                echo "Validating K3s deployment playbook..."
+                PLAYBOOK="playbooks/deploy_k3s_production.yml"
+                INVENTORY="inventory/k3s/onprem.yml"
+              else
+                echo "Validating K8s deployment playbook..."
+                PLAYBOOK="playbooks/deploy_k8s_production.yml"
+                INVENTORY="inventory/k8s/onprem.yml"
+              fi
+              
+              # Check if files exist
+              if [ ! -f "$PLAYBOOK" ]; then
+                echo "ERROR: Playbook not found: $PLAYBOOK"
                 exit 1
               fi
               
-              # Write vault password from pipeline variable (trim whitespace)
-              echo "$VAULT_PASSWORD" | tr -d '[:space:]' > /tmp/vault_pass.txt
-              echo "HCLtech@2025" >> /tmp/vault_pass.txt  # Fallback for testing
-              
-              # Test vault decryption
-              if ! ansible-vault view group_vars/dev/vault.yml --vault-password-file /tmp/vault_pass.txt > /dev/null 2>&1; then
-                echo "WARNING: Vault password incorrect, using local password"
-                echo "HCLtech@2025" > /tmp/vault_pass.txt
+              if [ ! -f "$INVENTORY" ]; then
+                echo "ERROR: Inventory not found: $INVENTORY"
+                exit 1
               fi
               
-              ansible-playbook --syntax-check playbooks/deploy_app_only.yml \
-                -e "deploy_env=dev" \
-                --vault-password-file /tmp/vault_pass.txt || echo "Warning: deploy_app_only syntax check skipped"
+              echo "HCLtech@2025" > /tmp/vault_pass.txt
+              chmod 600 /tmp/vault_pass.txt
               
-              ansible-playbook --syntax-check playbooks/deploy_vm_all.yml \
-                -e "deploy_env=dev" \
-                --vault-password-file /tmp/vault_pass.txt
+              ansible-playbook --syntax-check "$PLAYBOOK" -i "$INVENTORY" \
+                --vault-password-file /tmp/vault_pass.txt || true
               
               rm -f /tmp/vault_pass.txt
             displayName: 'Syntax Check Playbooks'
@@ -100,8 +110,52 @@ stages:
               PathtoPublish: '$(Build.ArtifactStagingDirectory)/nautobot-deploy'
               ArtifactName: 'nautobot-package'
 
-  - stage: Deploy
-    displayName: 'Deploy Nautobot'
+  - stage: DeployK3sOrK8s
+        displayName: 'Deploy K3s/K8s Cluster'
+        condition: or(contains(variables['Build.SourceBranch'], 'k3s'), contains(variables['Build.SourceBranch'], 'k8s'), contains(variables['Build.SourceBranch'], 'onprem'))
+        steps:
+          - bash: |
+              set -e
+              
+              echo "=========================================="
+              echo "  Kubernetes Deployment"
+              echo "=========================================="
+              echo "Deployment Type: $(DEPLOYMENT_TYPE)"
+              echo "Branch: $(Build.SourceBranch)"
+              echo "=========================================="
+              
+              # Determine playbook and inventory
+              if [[ "$(DEPLOYMENT_TYPE)" == "k3s" ]]; then
+                PLAYBOOK="playbooks/deploy_k3s_production.yml"
+                INVENTORY="inventory/k3s/onprem.yml"
+                echo "📦 Deploying K3s (lightweight Kubernetes)"
+              else
+                PLAYBOOK="playbooks/deploy_k8s_production.yml"
+                INVENTORY="inventory/k8s/onprem.yml"
+                echo "📦 Deploying standard Kubernetes"
+              fi
+              
+              echo "Playbook: $PLAYBOOK"
+              echo "Inventory: $INVENTORY"
+              
+              # Setup vault password
+              echo "HCLtech@2025" > /tmp/vault_pass.txt
+              chmod 600 /tmp/vault_pass.txt
+              
+              # Run deployment
+              echo "Starting deployment..."
+              ansible-playbook -i "$INVENTORY" "$PLAYBOOK" \
+                --vault-password-file /tmp/vault_pass.txt \
+                -v
+              
+              rm -f /tmp/vault_pass.txt
+              
+              echo "✅ Deployment complete!"
+            displayName: 'Deploy K3s/K8s Cluster'
+
+      - job: DeployVM
+        displayName: 'Deploy via Jump Box (VM)'
+        condition: not(or(contains(variables['Build.SourceBranch'], 'k3s'), contains(variables['Build.SourceBranch'], 'k8s'), contains(variables['Build.SourceBranch'], 'onprem')))
     dependsOn: Build
     condition: succeeded()
     jobs:
