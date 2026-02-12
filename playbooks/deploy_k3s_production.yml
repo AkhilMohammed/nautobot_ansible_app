@@ -68,11 +68,14 @@
     - name: Install K3s server (master node)
       shell: |
         set -e
+        export INSTALL_K3S_SKIP_START=false
         curl -sfL https://get.k3s.io | sh -s - server \
           --cluster-init \
           --write-kubeconfig-mode 644 \
           --tls-san {{ ansible_host }} \
-          --node-name {{ inventory_hostname }}
+          --node-name {{ inventory_hostname }} \
+          --disable traefik \
+          --kube-apiserver-arg="--enable-admission-plugins=NodeRestriction"
         
         # Verify installation
         if [ ! -f /usr/local/bin/k3s ]; then
@@ -81,6 +84,8 @@
         fi
         
         echo "K3s installed successfully"
+      args:
+        executable: /bin/bash
       register: k3s_install
       retries: 3
       delay: 10
@@ -149,7 +154,7 @@
 
     - name: Wait for K3s API server to respond
       shell: |
-        for i in {1..90}; do
+        for i in $(seq 1 90); do
           if curl -k https://127.0.0.1:6443/livez 2>&1 | grep -q "ok"; then
             echo "API server is responding"
             exit 0
@@ -166,6 +171,8 @@
         echo "=== K3s Logs (last 50 lines) ==="
         journalctl -u k3s -n 50 --no-pager || true
         exit 1
+      args:
+        executable: /bin/bash
       register: api_ready
       retries: 1
       delay: 15
@@ -173,7 +180,7 @@
     - name: Wait for node to be ready
       shell: |
         export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-        for i in {1..90}; do
+        for i in $(seq 1 90); do
           if kubectl get nodes 2>&1 | grep -q "Ready"; then
             echo "Node is ready!"
             kubectl get nodes
