@@ -61,17 +61,40 @@
 
     - name: Install K3s server (master node)
       shell: |
+        set -e
         curl -sfL https://get.k3s.io | sh -s - server \
           --cluster-init \
           --write-kubeconfig-mode 644 \
           --tls-san {{ ansible_host }} \
           --node-name {{ inventory_hostname }}
-      args:
-        creates: /usr/local/bin/k3s
+        
+        # Verify installation
+        if [ ! -f /usr/local/bin/k3s ]; then
+          echo "ERROR: K3s installation failed - binary not found"
+          exit 1
+        fi
+        
+        echo "K3s installed successfully"
       register: k3s_install
       retries: 3
       delay: 10
       until: k3s_install.rc == 0
+      failed_when: k3s_install.rc != 0
+
+    - name: Verify K3s binary exists
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+      failed_when: not k3s_binary.stat.exists
+
+    - name: Wait for K3s service to start
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      register: k3s_service
+      retries: 3
+      delay: 5
 
     - name: Wait for K3s to be ready
       wait_for:
@@ -83,15 +106,17 @@
     - name: Wait for node to be ready
       shell: |
         for i in {1..30}; do
-          if /usr/local/bin/k3s kubectl get nodes | grep -q "Ready"; then
+          if kubectl get nodes 2>/dev/null | grep -q "Ready"; then
             echo "Node is ready"
             exit 0
           fi
           sleep 2
         done
         exit 1
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: node_ready
-      retries: 2
+      retries: 3
       delay: 5
 
     - name: Get K3s node token
