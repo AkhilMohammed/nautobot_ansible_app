@@ -29,7 +29,7 @@ jobs:
       inventory: ${{ steps.detect.outputs.inventory }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Detect deployment type from branch
         id: detect
@@ -65,7 +65,7 @@ jobs:
     needs: detect-deployment-type
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Ansible
         run: |
@@ -108,7 +108,7 @@ jobs:
     needs: [detect-deployment-type, validate]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Display deployment info
         run: |
@@ -213,7 +213,7 @@ jobs:
 
       - name: Upload deployment logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-logs
           path: /tmp/k8s_deployment_logs/
