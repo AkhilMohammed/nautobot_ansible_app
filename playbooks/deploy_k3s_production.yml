@@ -23,6 +23,12 @@
       hostname:
         name: "{{ inventory_hostname }}"
 
+    - name: Ensure curl is installed
+      apt:
+        name: curl
+        state: present
+        update_cache: no
+
     - name: Update /etc/hosts with all cluster nodes
       lineinfile:
         path: /etc/hosts
@@ -96,28 +102,52 @@
       retries: 3
       delay: 5
 
-    - name: Wait for K3s to be ready
+    - name: Wait for kubeconfig to be created
+      wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 60
+
+    - name: Wait for K3s API server port
       wait_for:
         port: 6443
         host: "{{ ansible_host }}"
-        delay: 5
-        timeout: 60
+        delay: 10
+        timeout: 120
+
+    - name: Wait for K3s API server to respond
+      shell: |
+        for i in {1..60}; do
+          if curl -k https://127.0.0.1:6443/livez &>/dev/null; then
+            echo "API server is responding"
+            exit 0
+          fi
+          echo "Waiting for API server... (attempt $i/60)"
+          sleep 2
+        done
+        echo "ERROR: API server did not respond"
+        exit 1
+      register: api_ready
+      retries: 2
+      delay: 10
 
     - name: Wait for node to be ready
       shell: |
-        for i in {1..30}; do
-          if kubectl get nodes 2>/dev/null | grep -q "Ready"; then
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        for i in {1..60}; do
+          if kubectl get nodes 2>&1 | grep -q "Ready"; then
             echo "Node is ready"
+            kubectl get nodes
             exit 0
           fi
-          sleep 2
+          echo "Waiting for node to be ready... (attempt $i/60)"
+          sleep 3
         done
+        echo "ERROR: Node did not become ready"
+        kubectl get nodes || true
         exit 1
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: node_ready
-      retries: 3
-      delay: 5
+      retries: 2
+      delay: 10
 
     - name: Get K3s node token
       slurp:
