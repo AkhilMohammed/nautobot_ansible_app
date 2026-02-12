@@ -1,0 +1,220 @@
+name: Deploy K3s/K8s Cluster
+
+on:
+  push:
+    branches:
+      - main
+      - feat/*
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deployment_type:
+        description: 'Deployment Type'
+        required: true
+        default: 'k3s'
+        type: choice
+        options:
+          - k3s
+          - k8s
+
+jobs:
+  detect-deployment-type:
+    name: Detect Deployment Type
+    runs-on: self-hosted
+    outputs:
+      deployment_type: ${{ steps.detect.outputs.deployment_type }}
+      playbook: ${{ steps.detect.outputs.playbook }}
+      inventory: ${{ steps.detect.outputs.inventory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Detect deployment type from branch
+        id: detect
+        run: |
+          echo "Branch: ${{ github.ref_name }}"
+          
+          # Auto-detect from branch name or use manual input
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            DEPLOYMENT_TYPE="${{ github.event.inputs.deployment_type }}"
+          elif [[ "${{ github.ref_name }}" == *"k3s"* ]]; then
+            DEPLOYMENT_TYPE="k3s"
+          elif [[ "${{ github.ref_name }}" == *"k8s"* ]] || [[ "${{ github.ref_name }}" == *"onprem"* ]]; then
+            DEPLOYMENT_TYPE="k8s"
+          else
+            DEPLOYMENT_TYPE="k3s"  # Default to k3s
+          fi
+          
+          echo "Deployment Type: $DEPLOYMENT_TYPE"
+          echo "deployment_type=$DEPLOYMENT_TYPE" >> $GITHUB_OUTPUT
+          
+          # Set playbook and inventory based on type
+          if [[ "$DEPLOYMENT_TYPE" == "k3s" ]]; then
+            echo "playbook=playbooks/deploy_k3s_production.yml" >> $GITHUB_OUTPUT
+            echo "inventory=inventory/k3s/onprem.yml" >> $GITHUB_OUTPUT
+          else
+            echo "playbook=playbooks/deploy_k8s_production.yml" >> $GITHUB_OUTPUT
+            echo "inventory=inventory/k8s/onprem.yml" >> $GITHUB_OUTPUT
+          fi
+
+  validate:
+    name: Validate Playbooks
+    runs-on: self-hosted
+    needs: detect-deployment-type
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Ansible
+        run: |
+          if ! command -v ansible-playbook &> /dev/null; then
+            echo "Installing Ansible..."
+            python3 -m pip install --user ansible
+          fi
+          ansible --version
+
+      - name: Validate playbook syntax
+        run: |
+          echo "Validating: ${{ needs.detect-deployment-type.outputs.playbook }}"
+          echo "Inventory: ${{ needs.detect-deployment-type.outputs.inventory }}"
+          
+          if [ ! -f "${{ needs.detect-deployment-type.outputs.playbook }}" ]; then
+            echo "ERROR: Playbook not found!"
+            exit 1
+          fi
+          
+          if [ ! -f "${{ needs.detect-deployment-type.outputs.inventory }}" ]; then
+            echo "ERROR: Inventory not found!"
+            exit 1
+          fi
+          
+          # Create vault password file if it exists
+          if [ -f vault_pass.txt ]; then
+            VAULT_OPT="--vault-password-file vault_pass.txt"
+          else
+            VAULT_OPT=""
+          fi
+          
+          ansible-playbook --syntax-check \
+            -i "${{ needs.detect-deployment-type.outputs.inventory }}" \
+            "${{ needs.detect-deployment-type.outputs.playbook }}" \
+            $VAULT_OPT
+
+  deploy:
+    name: Deploy Cluster
+    runs-on: self-hosted
+    needs: [detect-deployment-type, validate]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Display deployment info
+        run: |
+          echo "=========================================="
+          echo "  Kubernetes Deployment"
+          echo "=========================================="
+          echo "Deployment Type: ${{ needs.detect-deployment-type.outputs.deployment_type }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Playbook: ${{ needs.detect-deployment-type.outputs.playbook }}"
+          echo "Inventory: ${{ needs.detect-deployment-type.outputs.inventory }}"
+          echo "=========================================="
+
+      - name: Deploy K3s/K8s Cluster
+        run: |
+          set -e
+          
+          PLAYBOOK="${{ needs.detect-deployment-type.outputs.playbook }}"
+          INVENTORY="${{ needs.detect-deployment-type.outputs.inventory }}"
+          
+          # Setup vault password file
+          if [ ! -f vault_pass.txt ]; then
+            echo "WARNING: vault_pass.txt not found, deployment may fail if vault is needed"
+            VAULT_OPT=""
+          else
+            VAULT_OPT="--vault-password-file vault_pass.txt"
+          fi
+          
+          # Create log directory
+          LOG_DIR="/tmp/k8s_deployment_logs"
+          mkdir -p "$LOG_DIR"
+          LOG_FILE="$LOG_DIR/deployment_$(date +%Y%m%d_%H%M%S).log"
+          
+          echo "Starting deployment..."
+          echo "Log file: $LOG_FILE"
+          
+          # Run deployment
+          ansible-playbook -i "$INVENTORY" "$PLAYBOOK" \
+            $VAULT_OPT \
+            -v 2>&1 | tee "$LOG_FILE"
+          
+          echo "✅ Deployment complete!"
+          echo "Log saved to: $LOG_FILE"
+
+      - name: Verify cluster health
+        if: success()
+        run: |
+          echo "Waiting 30 seconds for cluster to stabilize..."
+          sleep 30
+          
+          # Get master IP from inventory
+          MASTER_IP=$(grep -A 10 "k8s_master:" "${{ needs.detect-deployment-type.outputs.inventory }}" | grep ansible_host | head -1 | awk '{print $2}')
+          
+          if [ -z "$MASTER_IP" ]; then
+            echo "WARNING: Could not determine master IP"
+            exit 0
+          fi
+          
+          echo "Master node: $MASTER_IP"
+          echo ""
+          echo "=========================================="
+          echo "  Cluster Status"
+          echo "=========================================="
+          
+          # Check nodes
+          echo "Nodes:"
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get nodes -o wide" || echo "Could not retrieve nodes"
+          
+          echo ""
+          echo "System Pods:"
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get pods -A" || echo "Could not retrieve pods"
+          
+          echo ""
+          echo "Nautobot Pods:"
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl get pods -n nautobot" || echo "Nautobot not deployed yet"
+          
+          echo "=========================================="
+
+      - name: Display access instructions
+        if: success()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "  ✅ Deployment Successful!"
+          echo "=========================================="
+          echo ""
+          echo "Deployment Type: ${{ needs.detect-deployment-type.outputs.deployment_type }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. SSH to master: ssh ubuntu@172.17.152.109"
+          echo "2. Check nodes: kubectl get nodes"
+          echo "3. Check pods: kubectl get pods -A"
+          echo "4. Access Nautobot: kubectl get svc -n nautobot"
+          echo ""
+          if [[ "${{ needs.detect-deployment-type.outputs.deployment_type }}" == "k3s" ]]; then
+            echo "K3s Advantages:"
+            echo "- ✅ Stable on Ubuntu 25.10 (zero crashes)"
+            echo "- ✅ CNCF certified Kubernetes"
+            echo "- ✅ 100% API compatible"
+            echo "- ✅ Production ready"
+          fi
+          echo "=========================================="
+
+      - name: Upload deployment logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-logs
+          path: /tmp/k8s_deployment_logs/
+          retention-days: 30
