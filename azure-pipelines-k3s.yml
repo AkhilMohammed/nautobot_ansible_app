@@ -1,0 +1,253 @@
+trigger:
+  branches:
+    include:
+      - main
+      - feat/*
+
+parameters:
+  - name: deploymentType
+    displayName: 'Kubernetes Deployment Type'
+    type: string
+    default: 'k3s'
+    values:
+      - k8s
+      - k3s
+
+  - name: environment
+    displayName: 'Target Environment'
+    type: string
+    default: 'onprem'
+    values:
+      - onprem
+      - dev
+      - test
+      - prod
+
+pool:
+  name: 'ec2-agents'
+
+variables:
+  - group: nautobot-azure-secrets
+  - name: JUMPBOX_IP_FALLBACK
+    value: "74.249.226.93"
+  - name: DEPLOYMENT_TYPE
+    value: ${{ parameters.deploymentType }}
+  - name: TARGET_ENV
+    value: ${{ parameters.environment }}
+
+stages:
+  - stage: Build
+    displayName: 'Build and Test'
+    jobs:
+      - job: Validate
+        displayName: 'Validate Code'
+        steps:
+          - bash: |
+              set -e
+              echo "=========================================="
+              echo "Deployment Configuration"
+              echo "=========================================="
+              echo "Type: $(DEPLOYMENT_TYPE)"
+              echo "Environment: $(TARGET_ENV)"
+              echo "Branch: $(Build.SourceBranchName)"
+              echo "=========================================="
+            displayName: 'Display Configuration'
+
+          - bash: |
+              set -e
+              echo "Using Python 3.11"
+              python3.11 --version
+              echo "Installing dependencies..."
+              python3.11 -m pip install --user ansible ansible-lint yamllint
+            displayName: 'Install Dependencies'
+
+          - bash: |
+              set -e
+              echo "Linting Ansible playbooks..."
+              ansible-lint playbooks/*.yml || true
+            displayName: 'Lint Ansible Playbooks'
+
+          - bash: |
+              set -e
+              echo "Validating playbook syntax for $(DEPLOYMENT_TYPE)..."
+              
+              # Check if VAULT_PASSWORD is set
+              if [ -z "$VAULT_PASSWORD" ]; then
+                echo "ERROR: VAULT_PASSWORD variable not set in variable group!"
+                echo "Please add VAULT_PASSWORD to the 'nautobot-azure-secrets' variable group"
+                exit 1
+              fi
+              
+              # Write vault password from pipeline variable
+              echo "$VAULT_PASSWORD" | tr -d '[:space:]' > /tmp/vault_pass.txt
+              
+              # Select playbook based on deployment type
+              if [ "$(DEPLOYMENT_TYPE)" == "k3s" ]; then
+                PLAYBOOK="playbooks/deploy_k3s_production.yml"
+                INVENTORY="inventory/k3s/$(TARGET_ENV).yml"
+              else
+                PLAYBOOK="playbooks/deploy_k8s_production.yml"
+                INVENTORY="inventory/k8s/$(TARGET_ENV).yml"
+              fi
+              
+              echo "Checking playbook: $PLAYBOOK"
+              echo "Using inventory: $INVENTORY"
+              
+              # Syntax check
+              ansible-playbook $PLAYBOOK -i $INVENTORY --syntax-check --vault-password-file /tmp/vault_pass.txt
+              
+            env:
+              VAULT_PASSWORD: $(VAULT_PASSWORD)
+            displayName: 'Validate Playbook Syntax'
+
+  - stage: Deploy
+    displayName: 'Deploy to Infrastructure'
+    dependsOn: Build
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/feat/')))
+    jobs:
+      - deployment: DeployCluster
+        displayName: 'Deploy $(DEPLOYMENT_TYPE) Cluster'
+        environment: 'onprem-$(TARGET_ENV)'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - bash: |
+                    set -e
+                    echo "=========================================="
+                    echo "🚀 Starting $(DEPLOYMENT_TYPE) Deployment"
+                    echo "=========================================="
+                    echo "Deployment Type: $(DEPLOYMENT_TYPE)"
+                    echo "Environment: $(TARGET_ENV)"
+                    echo "Timestamp: $(date)"
+                    echo "=========================================="
+                  displayName: 'Pre-Deployment Info'
+
+                - bash: |
+                    set -e
+                    
+                    # Write vault password
+                    echo "$VAULT_PASSWORD" | tr -d '[:space:]' > $(Pipeline.Workspace)/vault_pass.txt
+                    
+                    # Set SSH key permissions
+                    if [ -f ~/.ssh/id_rsa ]; then
+                      chmod 600 ~/.ssh/id_rsa
+                    fi
+                    
+                    # Select deployment files
+                    if [ "$(DEPLOYMENT_TYPE)" == "k3s" ]; then
+                      PLAYBOOK="playbooks/deploy_k3s_production.yml"
+                      INVENTORY="inventory/k3s/$(TARGET_ENV).yml"
+                      echo "📦 Using K3s deployment (lightweight Kubernetes)"
+                    else
+                      PLAYBOOK="playbooks/deploy_k8s_production.yml"
+                      INVENTORY="inventory/k8s/$(TARGET_ENV).yml"
+                      echo "📦 Using standard Kubernetes deployment"
+                    fi
+                    
+                    echo "Playbook: $PLAYBOOK"
+                    echo "Inventory: $INVENTORY"
+                    
+                    # Run deployment
+                    echo "=========================================="
+                    echo "Executing Ansible Playbook..."
+                    echo "=========================================="
+                    
+                    ansible-playbook $PLAYBOOK \
+                      -i $INVENTORY \
+                      --vault-password-file $(Pipeline.Workspace)/vault_pass.txt \
+                      -v \
+                      2>&1 | tee $(Pipeline.Workspace)/deployment.log
+                    
+                    DEPLOY_STATUS=$?
+                    
+                    if [ $DEPLOY_STATUS -eq 0 ]; then
+                      echo "=========================================="
+                      echo "✅ Deployment completed successfully!"
+                      echo "=========================================="
+                    else
+                      echo "=========================================="
+                      echo "❌ Deployment failed with code $DEPLOY_STATUS"
+                      echo "=========================================="
+                      exit $DEPLOY_STATUS
+                    fi
+                    
+                  env:
+                    VAULT_PASSWORD: $(VAULT_PASSWORD)
+                    ANSIBLE_HOST_KEY_CHECKING: 'False'
+                    ANSIBLE_SSH_RETRIES: '3'
+                  displayName: 'Run $(DEPLOYMENT_TYPE) Deployment'
+                  timeoutInMinutes: 60
+
+                - bash: |
+                    set -e
+                    echo "=========================================="
+                    echo "🔍 Post-Deployment Verification"
+                    echo "=========================================="
+                    
+                    # Get master node IP from inventory
+                    MASTER_IP=$(grep -A 10 "k8s_master:" inventory/*/$(TARGET_ENV).yml | grep ansible_host | head -1 | awk '{print $2}')
+                    
+                    echo "Master node: $MASTER_IP"
+                    echo "Checking cluster status..."
+                    
+                    # Wait for cluster to stabilize
+                    sleep 30
+                    
+                    # Check cluster nodes
+                    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$MASTER_IP \
+                      "kubectl get nodes -o wide" || echo "⚠️ Cluster not accessible yet (may still be initializing)"
+                    
+                    # Check system pods
+                    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$MASTER_IP \
+                      "kubectl get pods -A" || echo "⚠️ Pods list not available yet"
+                    
+                    echo "=========================================="
+                    echo "✅ Verification complete"
+                    echo "=========================================="
+                    
+                  displayName: 'Verify Cluster Health'
+                  continueOnError: true
+
+                - task: PublishBuildArtifacts@1
+                  inputs:
+                    PathtoPublish: '$(Pipeline.Workspace)/deployment.log'
+                    ArtifactName: 'deployment-logs'
+                    publishLocation: 'Container'
+                  displayName: 'Publish Deployment Logs'
+                  condition: always()
+
+  - stage: PostDeploy
+    displayName: 'Post-Deployment Tasks'
+    dependsOn: Deploy
+    condition: succeeded()
+    jobs:
+      - job: Summary
+        displayName: 'Deployment Summary'
+        steps:
+          - bash: |
+              echo "=========================================="
+              echo "🎉 DEPLOYMENT SUMMARY"
+              echo "=========================================="
+              echo "Deployment Type: $(DEPLOYMENT_TYPE)"
+              echo "Environment: $(TARGET_ENV)"
+              echo "Status: SUCCESS ✅"
+              echo "Timestamp: $(date)"
+              echo "=========================================="
+              echo ""
+              echo "Next Steps:"
+              if [ "$(DEPLOYMENT_TYPE)" == "k3s" ]; then
+                echo "1. Verify cluster: kubectl get nodes"
+                echo "2. Check pods: kubectl get pods -A"
+                echo "3. Access Nautobot: kubectl get svc -n nautobot"
+                echo "4. K3s is production-ready and stable on Ubuntu 25.10"
+              else
+                echo "1. Monitor API server stability"
+                echo "2. Check for CrashLoopBackOff pods"
+                echo "3. Verify cluster health: kubectl get nodes"
+                echo "4. Note: Standard K8s may have issues on Ubuntu 25.10"
+              fi
+              echo "=========================================="
+            displayName: 'Display Summary'

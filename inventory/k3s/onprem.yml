@@ -1,0 +1,69 @@
+---
+##########################################################################################
+# K3S PRODUCTION INVENTORY - ON-PREMISES DEPLOYMENT
+##########################################################################################
+# Purpose: Define infrastructure for K3s Kubernetes cluster
+# Environment: Production on-premises VMs (Ubuntu 25.10)
+# Total Nodes: 6 (1 master/server, 5 workers/agents)
+##########################################################################################
+
+all:
+  children:
+    k8s_master:
+      hosts:
+        onprem-k8s-master:
+          ansible_host: 172.17.152.109
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: server
+    
+    k8s_workers:
+      hosts:
+        onprem-k8s-web-01:
+          ansible_host: 172.17.152.103
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: agent
+        
+        onprem-k8s-web-02:
+          ansible_host: 172.17.152.104
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: agent
+        
+        onprem-k8s-worker-01:
+          ansible_host: 172.17.152.105
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: agent
+        
+        onprem-k8s-worker-02:
+          ansible_host: 172.17.152.106
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: agent
+        
+        onprem-k8s-worker-03:
+          ansible_host: 172.17.152.108
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_python_interpreter: /usr/bin/python3
+          node_role: agent
+
+  vars:
+    # K3s Configuration
+    k3s_version: stable
+    k3s_server_port: 6443
+    
+    # Ansible Configuration
+    ansible_connection: ssh
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    
+    # Deployment Configuration
+    deployment_type: k3s
+    environment: production

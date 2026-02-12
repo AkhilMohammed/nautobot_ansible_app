@@ -1,0 +1,357 @@
+---
+##########################################################################################
+# K3S KUBERNETES DEPLOYMENT PLAYBOOK FOR PRODUCTION
+##########################################################################################
+# Purpose: Deploy K3s Kubernetes cluster on Ubuntu 25.10 with Nautobot application
+# Compatible: Ubuntu 25.10, kernel 6.17.0+
+# K3s Version: Latest stable
+# Author: Automated deployment for feat/k3s-deployment branch
+##########################################################################################
+
+- name: K3s Pre-flight checks and preparation
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tags: ['preflight', 'always']
+  
+  tasks:
+    - name: Display current system time
+      debug:
+        msg: "Current system time: {{ ansible_date_time.date }} {{ ansible_date_time.time }}"
+
+    - name: Set hostname for each node
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Update /etc/hosts with all cluster nodes
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+        state: present
+      with_items: "{{ groups['all'] }}"
+      when: hostvars[item].ansible_host is defined
+
+    - name: Check if K3s is already installed
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_installed
+
+    - name: Display K3s installation status
+      debug:
+        msg: "K3s already installed: {{ k3s_installed.stat.exists }}"
+
+##########################################################################################
+# MASTER NODE SETUP
+##########################################################################################
+
+- name: Deploy K3s Master (Server) Node
+  hosts: k8s_master
+  become: yes
+  gather_facts: yes
+  tags: ['master', 'server']
+  
+  tasks:
+    - name: Clean up old K3s installation if exists
+      shell: |
+        if [ -f /usr/local/bin/k3s-uninstall.sh ]; then
+          /usr/local/bin/k3s-uninstall.sh
+        fi
+      ignore_errors: yes
+      when: k3s_installed.stat.exists
+
+    - name: Install K3s server (master node)
+      shell: |
+        curl -sfL https://get.k3s.io | sh -s - server \
+          --cluster-init \
+          --write-kubeconfig-mode 644 \
+          --tls-san {{ ansible_host }} \
+          --node-name {{ inventory_hostname }}
+      args:
+        creates: /usr/local/bin/k3s
+      register: k3s_install
+      retries: 3
+      delay: 10
+      until: k3s_install.rc == 0
+
+    - name: Wait for K3s to be ready
+      wait_for:
+        port: 6443
+        host: "{{ ansible_host }}"
+        delay: 5
+        timeout: 60
+
+    - name: Wait for node to be ready
+      shell: |
+        for i in {1..30}; do
+          if /usr/local/bin/k3s kubectl get nodes | grep -q "Ready"; then
+            echo "Node is ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        exit 1
+      register: node_ready
+      retries: 2
+      delay: 5
+
+    - name: Get K3s node token
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_token_encoded
+
+    - name: Decode K3s token
+      set_fact:
+        k3s_token: "{{ k3s_token_encoded.content | b64decode | trim }}"
+
+    - name: Display join information
+      debug:
+        msg: "K3s server deployed. Token available for worker join."
+
+    - name: Create kubeconfig directory for ansible user
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy kubeconfig for ansible user
+      copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+        remote_src: yes
+
+    - name: Update kubeconfig server address
+      replace:
+        path: "/home/{{ ansible_user }}/.kube/config"
+        regexp: 'https://127.0.0.1:6443'
+        replace: "https://{{ ansible_host }}:6443"
+
+    - name: Verify cluster is accessible
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get nodes
+      become_user: "{{ ansible_user }}"
+      register: cluster_status
+      retries: 3
+      delay: 5
+
+    - name: Display cluster status
+      debug:
+        var: cluster_status.stdout_lines
+
+##########################################################################################
+# WORKER NODES SETUP
+##########################################################################################
+
+- name: Deploy K3s Worker (Agent) Nodes
+  hosts: k8s_workers
+  become: yes
+  gather_facts: yes
+  tags: ['workers', 'agents']
+  serial: 1
+  
+  vars:
+    k3s_server_ip: "{{ hostvars[groups['k8s_master'][0]].ansible_host }}"
+    k3s_join_token: "{{ hostvars[groups['k8s_master'][0]].k3s_token }}"
+  
+  tasks:
+    - name: Display join parameters
+      debug:
+        msg: "Joining K3s cluster at {{ k3s_server_ip }} with node name {{ inventory_hostname }}"
+
+    - name: Clean up old K3s installation if exists
+      shell: |
+        if [ -f /usr/local/bin/k3s-agent-uninstall.sh ]; then
+          /usr/local/bin/k3s-agent-uninstall.sh
+        fi
+      ignore_errors: yes
+
+    - name: Install K3s agent (worker node)
+      shell: |
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 \
+          K3S_TOKEN="{{ k3s_join_token }}" \
+          sh -s - agent --node-name {{ inventory_hostname }}
+      args:
+        creates: /usr/local/bin/k3s-agent
+      register: k3s_agent_install
+      retries: 3
+      delay: 10
+      until: k3s_agent_install.rc == 0
+
+    - name: Wait for agent to register
+      pause:
+        seconds: 10
+
+    - name: Verify worker joined (from master)
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get nodes {{ inventory_hostname }}
+      become_user: "{{ ansible_user }}"
+      delegate_to: "{{ groups['k8s_master'][0] }}"
+      register: worker_status
+      retries: 5
+      delay: 10
+      until: worker_status.rc == 0
+
+    - name: Display worker status
+      debug:
+        var: worker_status.stdout_lines
+
+##########################################################################################
+# VERIFICATION AND HEALTH CHECKS
+##########################################################################################
+
+- name: Verify K3s Cluster Health
+  hosts: k8s_master
+  become: yes
+  gather_facts: no
+  tags: ['verify', 'health']
+  
+  tasks:
+    - name: Get all nodes
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get nodes -o wide
+      become_user: "{{ ansible_user }}"
+      register: all_nodes
+
+    - name: Display all nodes
+      debug:
+        msg: "{{ all_nodes.stdout_lines }}"
+
+    - name: Get system pods
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get pods -A
+      become_user: "{{ ansible_user }}"
+      register: system_pods
+
+    - name: Display system pods
+      debug:
+        msg: "{{ system_pods.stdout_lines }}"
+
+    - name: Check for any failed pods
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
+      become_user: "{{ ansible_user }}"
+      register: failed_pods
+      ignore_errors: yes
+
+    - name: Display failed pods if any
+      debug:
+        msg: "{{ failed_pods.stdout_lines }}"
+      when: failed_pods.stdout_lines | length > 1
+
+    - name: Cluster deployment summary
+      debug:
+        msg:
+          - "=========================================="
+          - "K3S CLUSTER DEPLOYMENT COMPLETE"
+          - "=========================================="
+          - "Cluster Type: K3s (Lightweight Kubernetes)"
+          - "Master Node: {{ groups['k8s_master'][0] }}"
+          - "Worker Nodes: {{ groups['k8s_workers'] | length }}"
+          - "Total Nodes: {{ groups['all'] | length }}"
+          - "=========================================="
+          - "Access via: kubectl --kubeconfig=/home/{{ ansible_user }}/.kube/config"
+          - "Next: Deploy Nautobot application"
+          - "=========================================="
+
+##########################################################################################
+# NAUTOBOT APPLICATION DEPLOYMENT
+##########################################################################################
+
+- name: Deploy Nautobot Application on K3s
+  hosts: k8s_master
+  become: yes
+  gather_facts: no
+  tags: ['nautobot', 'app']
+  
+  tasks:
+    - name: Check if Helm is installed
+      shell: which helm
+      register: helm_check
+      ignore_errors: yes
+
+    - name: Install Helm if not present
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      when: helm_check.rc != 0
+
+    - name: Create nautobot namespace
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f -
+      become_user: "{{ ansible_user }}"
+
+    - name: Add Nautobot Helm repository
+      shell: |
+        helm repo add nautobot https://nautobot.github.io/helm-charts/
+        helm repo update
+      become_user: "{{ ansible_user }}"
+      ignore_errors: yes
+
+    - name: Deploy Nautobot with Helm
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        helm upgrade --install nautobot nautobot/nautobot \
+          --namespace nautobot \
+          --set postgresql.enabled=true \
+          --set postgresql.auth.password=nautobot123 \
+          --set redis.enabled=true \
+          --set nautobot.superuser.enabled=true \
+          --set nautobot.superuser.username=admin \
+          --set nautobot.superuser.password=admin \
+          --set nautobot.superuser.email=admin@example.com \
+          --wait \
+          --timeout=10m
+      become_user: "{{ ansible_user }}"
+      register: nautobot_deploy
+      ignore_errors: yes
+
+    - name: Wait for Nautobot pods to be ready
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nautobot -n nautobot --timeout=300s
+      become_user: "{{ ansible_user }}"
+      register: nautobot_ready
+      ignore_errors: yes
+
+    - name: Get Nautobot pods status
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get pods -n nautobot -o wide
+      become_user: "{{ ansible_user }}"
+      register: nautobot_pods
+
+    - name: Display Nautobot pods
+      debug:
+        msg: "{{ nautobot_pods.stdout_lines }}"
+
+    - name: Get Nautobot service information
+      shell: |
+        export KUBECONFIG=/home/{{ ansible_user }}/.kube/config
+        kubectl get svc -n nautobot
+      become_user: "{{ ansible_user }}"
+      register: nautobot_svc
+
+    - name: Display Nautobot services
+      debug:
+        msg: "{{ nautobot_svc.stdout_lines }}"
+
+    - name: Deployment complete message
+      debug:
+        msg:
+          - "=========================================="
+          - "🎉 K3S CLUSTER WITH NAUTOBOT DEPLOYED!"
+          - "=========================================="
+          - "Cluster is ready and Nautobot is deployed"
+          - "Access Nautobot via the service NodePort"
+          - "View services: kubectl get svc -n nautobot"
+          - "View pods: kubectl get pods -n nautobot"
+          - "=========================================="
