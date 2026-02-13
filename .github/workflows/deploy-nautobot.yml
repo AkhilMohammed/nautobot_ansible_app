@@ -12,6 +12,7 @@ on:
       - main
       - develop
       - staging
+      - feat/onprem-deployment
     paths:
       - 'group_vars/**/*.yml'
       - 'inventory/k8s/**/*.yml'
