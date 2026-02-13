@@ -1,5 +1,5 @@
 # Nautobot Helm Chart - Production Configuration
-# Last updated: 2026-02-13 - Testing passwordless sudo deployment
+# Last updated: 2026-02-13 - Deployment with vault password support
 
 # Docker image configuration
 image:
