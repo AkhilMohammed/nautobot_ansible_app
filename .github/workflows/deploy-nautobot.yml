@@ -131,8 +131,10 @@ jobs:
           ENV=${{ steps.config.outputs.environment }}
           
           if [ -f "inventory/k8s/${ENV}.yml" ]; then
-            MASTER_IP=$(grep -A5 "k8s_master:" "inventory/k8s/${ENV}.yml" | grep "ansible_host:" | awk '{print $2}' | tr -d '"')
+            # Extract the first ansible_host IP from the inventory
+            MASTER_IP=$(grep "ansible_host:" "inventory/k8s/${ENV}.yml" | head -1 | awk '{print $2}' | tr -d '"')
             echo "master_ip=$MASTER_IP" >> $GITHUB_OUTPUT
+            echo "📍 Master IP: $MASTER_IP"
             
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$MASTER_IP "kubectl get nodes" 2>/dev/null; then
               echo "needs_setup=false" >> $GITHUB_OUTPUT
