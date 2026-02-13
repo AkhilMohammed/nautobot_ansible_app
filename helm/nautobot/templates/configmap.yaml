@@ -13,7 +13,7 @@ data:
     
     # Basic Configuration
     ALLOWED_HOSTS = {{ .Values.nautobot.allowedHosts | toJson }}
-    DEBUG = {{ .Values.nautobot.debug }}
+    DEBUG = {{ if .Values.nautobot.debug }}True{{ else }}False{{ end }}
     
     # Database Configuration
     DATABASES = {

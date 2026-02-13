@@ -61,10 +61,9 @@ spec:
         - name: nautobot
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["nautobot-server", "start", "--insecure"]
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: 8080
               protocol: TCP
           env:
             {{- include "nautobot.env" . | nindent 12 }}

@@ -40,7 +40,7 @@ spec:
             - --save
             - ""
             - --appendonly
-            - {{ .Values.redis.persistence.enabled | quote }}
+            - {{ if .Values.redis.persistence.enabled }}"yes"{{ else }}"no"{{ end }}
           ports:
             - name: redis
               containerPort: 6379

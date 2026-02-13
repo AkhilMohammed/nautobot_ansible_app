@@ -1,0 +1,164 @@
+name: Deploy Nautobot to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'group_vars/dev/nautobot.yml'
+      - 'group_vars/all/nautobot.yml'
+      - 'helm/nautobot/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+jobs:
+  detect-changes:
+    name: Detect Configuration Changes
+    runs-on: ubuntu-latest
+    outputs:
+      plugins_changed: ${{ steps.check.outputs.plugins_changed }}
+      config_changed: ${{ steps.check.outputs.config_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff HEAD~1 HEAD -- group_vars/dev/nautobot.yml | grep -i "plugin"; then
+            echo "plugins_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "plugins_changed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if git diff HEAD~1 HEAD -- group_vars/dev/nautobot.yml; then
+            echo "config_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "config_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: detect-changes
+    if: needs.detect-changes.outputs.config_changed == 'true'
+    runs-on: ubuntu-latest
+    environment: kubernetes-dev
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl cluster-info
+      
+      - name: Update ConfigMap
+        run: |
+          python3 <<'PYTHON'
+          import yaml
+          import os
+          
+          with open('group_vars/dev/nautobot.yml', 'r') as f:
+              config = yaml.safe_load(f)
+          
+          py_config = f"""import os
+from nautobot.core.settings import *
+
+ALLOWED_HOSTS = ['*']
+DEBUG = {str(config.get('nautobot_debug', False)).capitalize()}
+
+DATABASES = {{
+    'default': {{
+        'NAME': '{config['nautobot_db']['name']}',
+        'USER': os.getenv('NAUTOBOT_DB_USER'),
+        'PASSWORD': os.getenv('NAUTOBOT_DB_PASSWORD'),
+        'HOST': os.getenv('NAUTOBOT_DB_HOST'),
+        'PORT': '{config['nautobot_db']['port']}',
+        'ENGINE': '{config['nautobot_db']['engine']}',
+        'CONN_MAX_AGE': {config['nautobot_db']['conn_max_age']},
+    }}
+}}
+
+REDIS_HOST = os.getenv('NAUTOBOT_REDIS_HOST')
+REDIS_PORT = {config['nautobot_redis']['port']}
+REDIS_PASSWORD = os.getenv('NAUTOBOT_REDIS_PASSWORD')
+
+CACHES = {{
+    'default': {{
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f'redis://:{'{REDIS_PASSWORD}'}@{'{REDIS_HOST}'}:{'{REDIS_PORT}'}/0',
+        'OPTIONS': {{'CLIENT_CLASS': 'django_redis.client.DefaultClient'}},
+    }}
+}}
+
+CELERY_BROKER_URL = f'redis://:{'{REDIS_PASSWORD}'}@{'{REDIS_HOST}'}:{'{REDIS_PORT}'}/1'
+CELERY_RESULT_BACKEND = f'redis://:{'{REDIS_PASSWORD}'}@{'{REDIS_HOST}'}:{'{REDIS_PORT}'}/1'
+
+SECRET_KEY = os.getenv('NAUTOBOT_SECRET_KEY')
+METRICS_ENABLED = True
+"""
+          
+          with open('/tmp/nautobot_config.py', 'w') as f:
+              f.write(py_config)
+          PYTHON
+          
+          kubectl create configmap nautobot-config \
+            --from-file=nautobot_config.py=/tmp/nautobot_config.py \
+            -n nautobot \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Rolling Update
+        run: |
+          # Ensure zero-downtime strategy
+          kubectl patch deployment nautobot-web -n nautobot -p '{
+            "spec": {
+              "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {
+                  "maxSurge": 1,
+                  "maxUnavailable": 0
+                }
+              }
+            }
+          }'
+          
+          # Trigger rollout
+          kubectl patch deployment nautobot-web -n nautobot -p \
+            "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"deployedAt\":\"$(date +%s)\"}}}}}"
+          
+          # Wait for completion
+          kubectl rollout status deployment/nautobot-web -n nautobot --timeout=10m
+      
+      - name: Verify Deployment
+        run: |
+          kubectl get pods -n nautobot -l app.kubernetes.io/component=web
+          
+          # Check health
+          LB_IP=$(kubectl get svc nautobot-lb -n nautobot -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -f http://${LB_IP}/health/ || exit 1
+          
+          echo "✅ Deployment successful!"
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          kubectl rollout undo deployment/nautobot-web -n nautobot
+          kubectl rollout status deployment/nautobot-web -n nautobot

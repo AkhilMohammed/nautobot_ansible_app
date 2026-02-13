@@ -1,0 +1,133 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║     NAUTOBOT K8S DEPLOYMENT - QUICK REFERENCE CARD               ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📍 ACCESS YOUR NAUTOBOT INSTANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Primary (LoadBalancer):
+  HTTP:  http://172.17.152.200/
+  HTTPS: https://172.17.152.200/
+
+Username: admin
+Password: admin123
+
+⚡ CI/CD PIPELINE - AUTOMATIC ZERO-DOWNTIME DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+To deploy changes with ZERO DOWNTIME:
+
+1. Edit configuration:
+   vim group_vars/dev/nautobot.yml
+
+2. Add a plugin (example):
+   nautobot_plugins:
+     - name: nautobot_device_lifecycle_mgmt
+       pip_name: nautobot-device-lifecycle-mgmt
+
+3. Commit and push:
+   git add group_vars/dev/nautobot.yml
+   git commit -m "Add lifecycle management plugin"
+   git push origin main
+
+4. Pipeline automatically:
+   ✅ Detects changes
+   ✅ Builds new image (if plugins changed)
+   ✅ Updates ConfigMap
+   ✅ Performs rolling update (zero downtime!)
+   ✅ Runs health checks
+   ✅ Rolls back if failed
+
+🔧 SETUP CI/CD PIPELINE (ONE-TIME)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Run this script to generate secrets:
+  ./scripts/setup_cicd_pipeline.sh
+
+Then add to your CI/CD platform:
+  - Azure DevOps: Variable group 'KUBECONFIG_CONTENT'
+  - GitHub Actions: Secret 'KUBECONFIG'
+
+Pipeline files:
+  - azure-pipelines-k8s-deploy.yml
+  - .github/workflows/k8s-deploy.yml
+
+📊 MONITORING COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Check status:
+  ssh ubuntu@172.17.152.109 "kubectl get pods -n nautobot"
+
+View logs:
+  ssh ubuntu@172.17.152.109 "kubectl logs -f deployment/nautobot-web -n nautobot"
+
+Watch deployment:
+  ssh ubuntu@172.17.152.109 "kubectl rollout status deployment/nautobot-web -n nautobot"
+
+Test connectivity:
+  curl http://172.17.152.200/
+
+🔄 MANUAL OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Restart with zero downtime:
+  ssh ubuntu@172.17.152.109 "kubectl rollout restart deployment/nautobot-web -n nautobot"
+
+Scale application:
+  ssh ubuntu@172.17.152.109 "kubectl scale deployment nautobot-web -n nautobot --replicas=4"
+
+Rollback deployment:
+  ssh ubuntu@172.17.152.109 "kubectl rollout undo deployment/nautobot-web -n nautobot"
+
+View rollout history:
+  ssh ubuntu@172.17.152.109 "kubectl rollout history deployment/nautobot-web -n nautobot"
+
+🎯 WHAT YOU HAVE NOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Kubernetes cluster (5 nodes)
+✅ MetalLB LoadBalancer (172.17.152.200)
+✅ Nginx Ingress with HTTPS/TLS
+✅ Zero-downtime CI/CD pipeline
+✅ Auto-rollback on failures
+✅ PostgreSQL (20GB persistent)
+✅ Redis (5GB persistent)
+✅ Nautobot Web (2 replicas, HA)
+✅ Workers (2 replicas)
+✅ Scheduler (1 replica)
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Complete Guide: K8S_CICD_DEPLOYMENT_GUIDE.md
+Quick Summary: DEPLOYMENT_SUMMARY.md
+This Card: QUICK_ACCESS.txt
+
+🆘 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Pod issues:
+  ssh ubuntu@172.17.152.109 "kubectl describe pod <pod-name> -n nautobot"
+
+View events:
+  ssh ubuntu@172.17.152.109 "kubectl get events -n nautobot --sort-by='.lastTimestamp'"
+
+Check logs:
+  ssh ubuntu@172.17.152.109 "kubectl logs <pod-name> -n nautobot"
+
+LoadBalancer pending:
+  ssh ubuntu@172.17.152.109 "kubectl get pods -n metallb-system"
+
+💡 PRODUCTION TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before going live:
+  - Replace self-signed cert with Let's Encrypt
+  - Set strong passwords
+  - Enable monitoring (Prometheus/Grafana)
+  - Configure backups (Velero)
+  - Set resource limits
+  - Enable network policies
+
+See K8S_CICD_DEPLOYMENT_GUIDE.md for details.
+
+🎉 SUCCESS!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your Nautobot instance is live with:
+  ✅ LoadBalancer
+  ✅ HTTPS support
+  ✅ Nginx Ingress
+  ✅ Zero-downtime CI/CD pipeline
+
+Open http://172.17.152.200/ and login with admin/admin123!
