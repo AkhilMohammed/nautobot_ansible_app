@@ -302,3 +302,4 @@ extraVolumes: []
 
 # Extra volume mounts
 extraVolumeMounts: []
+# Secrets configured - testing automated deployment
