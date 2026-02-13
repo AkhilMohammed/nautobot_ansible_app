@@ -253,16 +253,15 @@ ingress:
     enabled: false
     secretName: nautobot-tls
 
-# Security Context
+# Security Context (Container level - no fsGroup)
 securityContext:
   runAsNonRoot: true
   runAsUser: 999
-  fsGroup: 999
   capabilities:
     drop:
       - ALL
 
-# Pod Security Policy
+# Pod Security Policy (Pod level - fsGroup allowed here)
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 999
