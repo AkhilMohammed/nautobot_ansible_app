@@ -1,0 +1,608 @@
+---
+# =====================================================================
+# AUTOMATED NAUTOBOT K8S DEPLOYMENT PIPELINE
+# =====================================================================
+# This pipeline provides one-click deployment of Nautobot on Kubernetes
+# Trigger: Changes to group_vars/dev/nautobot.yml
+# 
+# Customer Usage:
+# 1. Fork this repository
+# 2. Configure Azure DevOps pipeline variables (see README.md)
+# 3. Push changes to trigger automatic deployment
+# =====================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - staging
+  paths:
+    include:
+      - group_vars/**/*.yml
+      - inventory/k8s/**/*.yml
+      - helm/nautobot/**/*
+      - playbooks/deploy_k8s_all.yml
+      - roles/**/*
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - group_vars/**/*.yml
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: nautobot-k8s-secrets  # Create this in Azure DevOps
+  - name: ANSIBLE_VERSION
+    value: '2.15.0'
+  - name: HELM_VERSION
+    value: '3.14.0'
+  - name: KUBECTL_VERSION
+    value: '1.28.0'
+
+stages:
+  #===================================================================
+  # STAGE 1: Initialize & Validate
+  #===================================================================
+  - stage: Initialize
+    displayName: '🔍 Initialize & Validate'
+    jobs:
+      - job: ValidateAndPrepare
+        displayName: 'Validate Configuration'
+        steps:
+          - checkout: self
+            displayName: 'Checkout Code'
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.10'
+            displayName: 'Setup Python 3.10'
+
+          - bash: |
+              set -e
+              echo "=== Installing Prerequisites ==="
+              
+              # Install Ansible
+              pip install ansible==$(ANSIBLE_VERSION) ansible-lint yamllint jmespath
+              
+              # Install kubectl
+              curl -LO "https://dl.k8s.io/release/v$(KUBECTL_VERSION)/bin/linux/amd64/kubectl"
+              chmod +x kubectl
+              sudo mv kubectl /usr/local/bin/
+              
+              # Install Helm
+              curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+              
+              echo "✅ Prerequisites installed"
+              ansible --version
+              kubectl version --client
+              helm version
+              
+            displayName: 'Install Tools'
+
+          - bash: |
+              set -e
+              echo "=== Validating Configuration Files ==="
+              
+              # Validate YAML syntax
+              echo "Checking YAML files..."
+              yamllint group_vars/ inventory/ || true
+              
+              # Validate Ansible syntax
+              echo "Checking Ansible playbooks..."
+              ansible-playbook --syntax-check playbooks/deploy_k8s_all.yml
+              
+              # Determine environment from branch
+              BRANCH="${BUILD_SOURCEBRANCHNAME}"
+              case "$BRANCH" in
+                main|master)
+                  ENV="prod"
+                  ;;
+                staging)
+                  ENV="test"
+                  ;;
+                *)
+                  ENV="dev"
+                  ;;
+              esac
+              
+              echo "Target Environment: $ENV"
+              echo "##vso[task.setvariable variable=DEPLOY_ENV;isOutput=true]$ENV"
+              
+              # Validate environment-specific config exists
+              if [ ! -f "group_vars/${ENV}/nautobot.yml" ]; then
+                echo "❌ Configuration file not found: group_vars/${ENV}/nautobot.yml"
+                exit 1
+              fi
+              
+              echo "✅ Configuration validated for environment: $ENV"
+              
+            displayName: 'Validate Configuration'
+            name: config
+
+          - bash: |
+              set -e
+              echo "=== Analyzing Changes ==="
+              
+              # Get changed files
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+              
+              # Check if this is initial deployment
+              if [ -z "$CHANGED_FILES" ]; then
+                echo "Initial deployment detected"
+                echo "##vso[task.setvariable variable=INITIAL_DEPLOY;isOutput=true]true"
+                echo "##vso[task.setvariable variable=CONFIG_CHANGED;isOutput=true]true"
+                echo "##vso[task.setvariable variable=HELM_CHANGED;isOutput=true]true"
+              else
+                # Check what changed
+                if echo "$CHANGED_FILES" | grep -qE "group_vars/.*nautobot.yml"; then
+                  echo "Configuration changes detected"
+                  echo "##vso[task.setvariable variable=CONFIG_CHANGED;isOutput=true]true"
+                else
+                  echo "##vso[task.setvariable variable=CONFIG_CHANGED;isOutput=true]false"
+                fi
+                
+                if echo "$CHANGED_FILES" | grep -q "helm/"; then
+                  echo "Helm chart changes detected"
+                  echo "##vso[task.setvariable variable=HELM_CHANGED;isOutput=true]true"
+                else
+                  echo "##vso[task.setvariable variable=HELM_CHANGED;isOutput=true]false"
+                fi
+                
+                echo "##vso[task.setvariable variable=INITIAL_DEPLOY;isOutput=true]false"
+              fi
+              
+            displayName: 'Detect Changes'
+            name: changes
+
+  #===================================================================
+  # STAGE 2: Deploy/Update Kubernetes Cluster
+  #===================================================================
+  - stage: DeployCluster
+    displayName: '☸️ Deploy Kubernetes Cluster'
+    dependsOn: Initialize
+    variables:
+      DEPLOY_ENV: $[ stageDependencies.Initialize.ValidateAndPrepare.outputs['config.DEPLOY_ENV'] ]
+    jobs:
+      - job: CheckClusterStatus
+        displayName: 'Check Cluster Status'
+        steps:
+          - bash: |
+              set -e
+              echo "=== Checking Kubernetes Cluster Status ==="
+              
+              # Setup SSH key
+              mkdir -p ~/.ssh
+              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+              chmod 600 ~/.ssh/id_rsa
+              
+              # Get master IP from inventory
+              if [ -f "inventory/k8s/$(DEPLOY_ENV).yml" ]; then
+                MASTER_IP=$(grep -A5 "k8s_master:" "inventory/k8s/$(DEPLOY_ENV).yml" | grep "ansible_host:" | awk '{print $2}' | tr -d '"')
+                echo "Master IP: $MASTER_IP"
+              else
+                echo "⚠️ Inventory file not found for environment: $(DEPLOY_ENV)"
+                echo "##vso[task.setvariable variable=CLUSTER_EXISTS;isOutput=true]false"
+                echo "##vso[task.setvariable variable=NEEDS_SETUP;isOutput=true]true"
+                exit 0
+              fi
+              
+              # Test cluster connectivity
+              if [ -n "$MASTER_IP" ]; then
+                if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes ubuntu@$MASTER_IP "kubectl get nodes" 2>/dev/null; then
+                  echo "✅ Kubernetes cluster is running"
+                  echo "##vso[task.setvariable variable=CLUSTER_EXISTS;isOutput=true]true"
+                  echo "##vso[task.setvariable variable=NEEDS_SETUP;isOutput=true]false"
+                  echo "##vso[task.setvariable variable=MASTER_IP;isOutput=true]$MASTER_IP"
+                else
+                  echo "⚠️ Kubernetes cluster not accessible"
+                  echo "##vso[task.setvariable variable=CLUSTER_EXISTS;isOutput=true]false"
+                  echo "##vso[task.setvariable variable=NEEDS_SETUP;isOutput=true]true"
+                  echo "##vso[task.setvariable variable=MASTER_IP;isOutput=true]$MASTER_IP"
+                fi
+              else
+                echo "⚠️ Master IP not found in inventory"
+                echo "##vso[task.setvariable variable=CLUSTER_EXISTS;isOutput=true]false"
+                echo "##vso[task.setvariable variable=NEEDS_SETUP;isOutput=true]true"
+              fi
+              
+            displayName: 'Check Cluster Status'
+            name: status
+
+      - job: SetupCluster
+        displayName: 'Setup Kubernetes Cluster'
+        dependsOn: CheckClusterStatus
+        condition: eq(dependencies.CheckClusterStatus.outputs['status.NEEDS_SETUP'], 'true')
+        steps:
+          - bash: |
+              set -e
+              echo "=== Setting up Kubernetes Cluster ==="
+              
+              # Install Ansible collections
+              ansible-galaxy collection install kubernetes.core community.general
+              
+              # Setup SSH
+              mkdir -p ~/.ssh
+              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+              chmod 600 ~/.ssh/id_rsa
+              
+              # Run deployment playbook
+              ENV=$(DEPLOY_ENV)
+              ansible-playbook -i "inventory/k8s/${ENV}.yml" \
+                playbooks/deploy_k8s_all.yml \
+                -e "environment=${ENV}" \
+                -v
+              
+              echo "✅ Kubernetes cluster setup complete"
+              
+            displayName: 'Run Ansible Playbook'
+
+  #===================================================================
+  # STAGE 3: Deploy/Update Nautobot Application
+  #===================================================================
+  - stage: DeployNautobot
+    displayName: '🚀 Deploy Nautobot Application'
+    dependsOn:
+      - Initialize
+      - DeployCluster
+    variables:
+      DEPLOY_ENV: $[ stageDependencies.Initialize.ValidateAndPrepare.outputs['config.DEPLOY_ENV'] ]
+      CONFIG_CHANGED: $[ stageDependencies.Initialize.ValidateAndPrepare.outputs['changes.CONFIG_CHANGED'] ]
+      MASTER_IP: $[ stageDependencies.DeployCluster.CheckClusterStatus.outputs['status.MASTER_IP'] ]
+    jobs:
+      - deployment: DeployApp
+        displayName: 'Deploy Nautobot'
+        environment: 'nautobot-$(DEPLOY_ENV)'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - bash: |
+                    set -e
+                    echo "=== Preparing Deployment ==="
+                    
+                    # Install Helm
+                    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                    
+                    # Setup kubectl config
+                    mkdir -p ~/.kube ~/.ssh
+                    echo "$(KUBECONFIG_CONTENT)" > ~/.kube/config
+                    chmod 600 ~/.kube/config
+                    
+                    # Setup SSH for remote operations
+                    echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+                    chmod 600 ~/.ssh/id_rsa
+                    
+                    # Test cluster access
+                    kubectl get nodes || {
+                      echo "⚠️ Direct kubectl access failed, trying SSH tunnel..."
+                      ssh -o StrictHostKeyChecking=no ubuntu@$(MASTER_IP) "kubectl get nodes"
+                    }
+                    
+                    echo "✅ Cluster access verified"
+                    
+                  displayName: 'Setup Deployment Environment'
+
+                - bash: |
+                    set -e
+                    echo "=== Generating Helm Values from group_vars ==="
+                    
+                    python3 << 'PYTHON_SCRIPT'
+                    import yaml
+                    import sys
+                    import os
+                    
+                    env = os.environ.get('DEPLOY_ENV', 'dev')
+                    
+                    # Load environment-specific config
+                    try:
+                        with open(f'group_vars/{env}/nautobot.yml', 'r') as f:
+                            env_config = yaml.safe_load(f) or {}
+                    except FileNotFoundError:
+                        print(f"Warning: group_vars/{env}/nautobot.yml not found")
+                        env_config = {}
+                    
+                    # Load global config
+                    try:
+                        with open('group_vars/all/nautobot.yml', 'r') as f:
+                            all_config = yaml.safe_load(f) or {}
+                    except FileNotFoundError:
+                        all_config = {}
+                    
+                    # Merge configurations (env-specific overrides all)
+                    config = {**all_config, **env_config}
+                    
+                    # Generate Helm values
+                    helm_values = {
+                        'image': {
+                            'repository': config.get('nautobot_image', 'networktocode/nautobot'),
+                            'tag': config.get('nautobot_version', '2.1.0'),
+                            'pullPolicy': 'IfNotPresent'
+                        },
+                        'replicaCount': {
+                            'web': config.get('web_replicas', 3 if env == 'prod' else 2),
+                            'worker': config.get('worker_replicas', 3 if env == 'prod' else 2),
+                            'scheduler': config.get('scheduler_replicas', 2 if env == 'prod' else 1)
+                        },
+                        'resources': {
+                            'web': {
+                                'requests': {'cpu': '1000m', 'memory': '2Gi'},
+                                'limits': {'cpu': '2000m', 'memory': '4Gi'}
+                            },
+                            'worker': {
+                                'requests': {'cpu': '500m', 'memory': '1Gi'},
+                                'limits': {'cpu': '1000m', 'memory': '2Gi'}
+                            }
+                        },
+                        'autoscaling': {
+                            'enabled': env == 'prod',
+                            'minReplicas': 3,
+                            'maxReplicas': 10,
+                            'targetCPUUtilizationPercentage': 70
+                        },
+                        'nautobot': {
+                            'superuser': {
+                                'username': config.get('nautobot_superuser_username', 'admin'),
+                                'email': config.get('nautobot_superuser_email', 'admin@example.com')
+                            },
+                            'secretKey': config.get('nautobot_secret_key', 'changeme123456'),
+                            'allowedHosts': config.get('nautobot_allowed_hosts', ['*']),
+                            'config': config.get('nautobot_config', {})
+                        },
+                        'postgresql': {
+                            'enabled': True,
+                            'auth': {
+                                'database': config.get('postgres_db', 'nautobot'),
+                                'username': config.get('postgres_user', 'nautobot'),
+                                'password': config.get('postgres_password', 'nautobot')
+                            },
+                            'primary': {
+                                'persistence': {
+                                    'enabled': True,
+                                    'size': '50Gi' if env == 'prod' else '20Gi'
+                                }
+                            }
+                        },
+                        'redis': {
+                            'enabled': True,
+                            'auth': {
+                                'enabled': True,
+                                'password': config.get('redis_password', 'nautobot')
+                            },
+                            'master': {
+                                'persistence': {
+                                    'enabled': True,
+                                    'size': '10Gi' if env == 'prod' else '5Gi'
+                                }
+                            }
+                        },
+                        'persistence': {
+                            'media': {'size': '20Gi' if env == 'prod' else '10Gi'},
+                            'static': {'size': '5Gi' if env == 'prod' else '2Gi'},
+                            'git': {'size': '10Gi' if env == 'prod' else '5Gi'}
+                        },
+                        'ingress': {
+                            'enabled': True,
+                            'className': 'nginx',
+                            'annotations': {
+                                'nginx.ingress.kubernetes.io/ssl-redirect': 'false',
+                                'nginx.ingress.kubernetes.io/proxy-body-size': '50m'
+                            }
+                        }
+                    }
+                    
+                    # Write Helm values
+                    with open('/tmp/helm-values.yaml', 'w') as f:
+                        yaml.dump(helm_values, f, default_flow_style=False)
+                    
+                    print("✅ Helm values generated successfully")
+                    print("\n=== Generated Configuration ===")
+                    print(yaml.dump(helm_values, default_flow_style=False))
+                    
+                    PYTHON_SCRIPT
+                    
+                  displayName: 'Generate Helm Values'
+                  env:
+                    DEPLOY_ENV: $(DEPLOY_ENV)
+
+                - bash: |
+                    set -e
+                    echo "=== Deploying Nautobot with Helm ==="
+                    
+                    ENV=$(DEPLOY_ENV)
+                    MASTER_IP=$(MASTER_IP)
+                    
+                    # Create namespace
+                    kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f - || \
+                    ssh ubuntu@$MASTER_IP "kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f -"
+                    
+                    # Check if Helm chart exists
+                    if [ ! -d "helm/nautobot" ]; then
+                      echo "❌ Helm chart not found at helm/nautobot"
+                      echo "Using remote deployment via SSH..."
+                      
+                      # Copy files to master node
+                      scp -o StrictHostKeyChecking=no -r $(Build.SourcesDirectory)/* ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
+                      scp /tmp/helm-values.yaml ubuntu@$MASTER_IP:/tmp/
+                      
+                      # Deploy on master node
+                      ssh ubuntu@$MASTER_IP << 'DEPLOY'
+                      set -e
+                      cd /tmp/nautobot-deploy
+                      
+                      # Install/upgrade Nautobot
+                      helm upgrade --install nautobot ./helm/nautobot \
+                        --namespace nautobot \
+                        --values /tmp/helm-values.yaml \
+                        --wait \
+                        --timeout 15m \
+                        --atomic \
+                        --create-namespace
+                      
+                      echo "✅ Nautobot deployed successfully"
+                      DEPLOY
+                    else
+                      # Direct deployment
+                      helm upgrade --install nautobot ./helm/nautobot \
+                        --namespace nautobot \
+                        --values /tmp/helm-values.yaml \
+                        --wait \
+                        --timeout 15m \
+                        --atomic \
+                        --create-namespace
+                      
+                      echo "✅ Nautobot deployed successfully"
+                    fi
+                    
+                  displayName: 'Helm Deploy/Upgrade'
+                  env:
+                    DEPLOY_ENV: $(DEPLOY_ENV)
+                    MASTER_IP: $(MASTER_IP)
+
+                - bash: |
+                    set -e
+                    echo "=== Configuring Production Features ==="
+                    
+                    ENV=$(DEPLOY_ENV)
+                    
+                    # Only apply production hardening in prod environment
+                    if [ "$ENV" != "prod" ]; then
+                      echo "Skipping production hardening (not prod environment)"
+                      exit 0
+                    fi
+                    
+                    # Install MetalLB if not exists
+                    if ! kubectl get namespace metallb-system 2>/dev/null; then
+                      echo "Installing MetalLB..."
+                      kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+                      sleep 30
+                    fi
+                    
+                    # Apply network policies
+                    kubectl apply -f - <<EOF
+                    apiVersion: networking.k8s.io/v1
+                    kind: NetworkPolicy
+                    metadata:
+                      name: nautobot-web-policy
+                      namespace: nautobot
+                    spec:
+                      podSelector:
+                        matchLabels:
+                          app.kubernetes.io/component: web
+                      policyTypes: [Ingress, Egress]
+                      ingress:
+                        - from:
+                            - namespaceSelector:
+                                matchLabels:
+                                  name: ingress-nginx
+                      egress:
+                        - to:
+                            - podSelector:
+                                matchLabels:
+                                  app.kubernetes.io/component: database
+                        - to:
+                            - podSelector:
+                                matchLabels:
+                                  app.kubernetes.io/component: cache
+                        - to: []
+                    EOF
+                    
+                    echo "✅ Production features configured"
+                    
+                  displayName: 'Apply Production Hardening'
+                  condition: eq(variables['DEPLOY_ENV'], 'prod')
+
+  #===================================================================
+  # STAGE 4: Validation & Health Checks
+  #===================================================================
+  - stage: Validate
+    displayName: '✅ Validate Deployment'
+    dependsOn:
+      - Initialize
+      - DeployNautobot
+    variables:
+      DEPLOY_ENV: $[ stageDependencies.Initialize.ValidateAndPrepare.outputs['config.DEPLOY_ENV'] ]
+      MASTER_IP: $[ stageDependencies.DeployCluster.CheckClusterStatus.outputs['status.MASTER_IP'] ]
+    jobs:
+      - job: HealthCheck
+        displayName: 'Run Health Checks'
+        steps:
+          - bash: |
+              set -e
+              echo "=== Running Health Checks ==="
+              
+              # Setup kubectl
+              mkdir -p ~/.kube ~/.ssh
+              echo "$(KUBECONFIG_CONTENT)" > ~/.kube/config
+              echo "$(SSH_PRIVATE_KEY)" > ~/.ssh/id_rsa
+              chmod 600 ~/.kube/config ~/.ssh/id_rsa
+              
+              # Wait for pods to be ready
+              echo "Waiting for pods to be ready..."
+              kubectl wait --for=condition=ready pod \
+                -l app.kubernetes.io/name=nautobot \
+                -n nautobot \
+                --timeout=600s || {
+                echo "Using SSH to check pods..."
+                ssh ubuntu@$(MASTER_IP) "kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nautobot -n nautobot --timeout=600s"
+              }
+              
+              echo "✅ All pods are ready"
+              
+              # Get deployment status
+              kubectl get pods,deployments,services -n nautobot || \
+              ssh ubuntu@$(MASTER_IP) "kubectl get pods,deployments,services -n nautobot"
+              
+            displayName: 'Pod Health Check'
+
+          - bash: |
+              set -e
+              echo "=== Testing Application Endpoint ==="
+              
+              # Get LoadBalancer IP
+              INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || \
+              ssh ubuntu@$(MASTER_IP) "kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")
+              
+              if [ -n "$INGRESS_IP" ]; then
+                echo "Testing endpoint: http://$INGRESS_IP/"
+                
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$INGRESS_IP/ || echo "000")
+                
+                if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "302" ]; then
+                  echo "✅ Application is responding (HTTP $HTTP_CODE)"
+                else
+                  echo "⚠️ Unexpected HTTP code: $HTTP_CODE (might still be initializing)"
+                fi
+                
+                echo "##vso[task.setvariable variable=ACCESS_URL]http://$INGRESS_IP/"
+              else
+                echo "⚠️ LoadBalancer IP not yet assigned"
+              fi
+              
+            displayName: 'Endpoint Health Check'
+
+          - bash: |
+              set -e
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "🎉 DEPLOYMENT SUCCESSFUL!"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "🌐 Access URL: $(ACCESS_URL)"
+              echo "🔑 Username: admin"
+              echo "🔑 Password: admin123 (change after first login)"
+              echo ""
+              echo "📊 Deployed to Environment: $(DEPLOY_ENV)"
+              echo "📦 Pipeline: $(Build.BuildNumber)"
+              echo "🔗 Git Commit: $(Build.SourceVersion)"
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+            displayName: 'Deployment Summary'

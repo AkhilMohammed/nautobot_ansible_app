@@ -1,0 +1,371 @@
+# ==============================================================================
+# AUTOMATED NAUTOBOT K8S DEPLOYMENT - GitHub Actions
+# ==============================================================================
+# Triggers on: push to group_vars/dev/nautobot.yml
+# Deploys: Complete Kubernetes + Nautobot stack# ==============================================================================
+
+name: Deploy Nautobot to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+    paths:
+      - 'group_vars/**/*.yml'
+      - 'inventory/k8s/**/*.yml'
+      - 'helm/nautobot/**/*'
+      - 'playbooks/deploy_k8s_all.yml'
+      - 'roles/**/*'
+  
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'group_vars/**/*.yml'
+  
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      force_redeploy:
+        description: 'Force complete redeployment'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ANSIBLE_VERSION: '2.15.0'
+  HELM_VERSION: '3.14.0'
+  KUBECTL_VERSION: '1.28.0'
+
+jobs:
+  #============================================================================
+  # JOB 1: Initialize & Validate
+  #============================================================================
+  initialize:
+    name: 🔍 Initialize & Validate
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.config.outputs.environment }}
+      config_changed: ${{ steps.changes.outputs.config_changed }}
+      needs_setup: ${{ steps.cluster.outputs.needs_setup }}
+      master_ip: ${{ steps.cluster.outputs.master_ip }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Prerequisites
+        run: |
+          pip install ansible==${{ env.ANSIBLE_VERSION }} ansible-lint yamllint jmespath
+          
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          
+          # Install Helm
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Validate Configuration
+        id: config
+        run: |
+          echo "=== Validating Configuration ==="
+          
+          # Validate YAML
+          yamllint group_vars/ inventory/ || true
+          
+          # Validate Ansible
+          ansible-playbook --syntax-check playbooks/deploy_k8s_all.yml
+          
+          # Determine environment
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            case "${{ github.ref_name }}" in
+              main|master) ENV="prod" ;;
+              staging) ENV="test" ;;
+              *) ENV="dev" ;;
+            esac
+          fi
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "✅ Target environment: $ENV"
+
+      - name: Detect Changes
+        id: changes
+        run: |
+          # Check if config changed
+          if git diff --name-only HEAD~1 HEAD | grep -qE "group_vars/.*nautobot.yml"; then
+            echo "config_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "config_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Cluster Status
+        id: cluster
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          ENV=${{ steps.config.outputs.environment }}
+          
+          if [ -f "inventory/k8s/${ENV}.yml" ]; then
+            MASTER_IP=$(grep -A5 "k8s_master:" "inventory/k8s/${ENV}.yml" | grep "ansible_host:" | awk '{print $2}' | tr -d '"')
+            echo "master_ip=$MASTER_IP" >> $GITHUB_OUTPUT
+            
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$MASTER_IP "kubectl get nodes" 2>/dev/null; then
+              echo "needs_setup=false" >> $GITHUB_OUTPUT
+              echo "✅ Cluster is running"
+            else
+              echo "needs_setup=true" >> $GITHUB_OUTPUT
+              echo "⚠️ Cluster needs setup"
+            fi
+          else
+            echo "needs_setup=true" >> $GITHUB_OUTPUT
+          fi
+
+  #============================================================================
+  # JOB 2: Setup Kubernetes Cluster (if needed)
+  #============================================================================
+  setup-cluster:
+    name: ☸️ Setup Kubernetes Cluster
+    runs-on: ubuntu-latest
+    needs: initialize
+    if: needs.initialize.outputs.needs_setup == 'true'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & Ansible
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Ansible
+        run: |
+          pip install ansible==${{ env.ANSIBLE_VERSION }}
+          ansible-galaxy collection install kubernetes.core community.general
+
+      - name: Deploy Kubernetes Cluster
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ENVIRONMENT: ${{ needs.initialize.outputs.environment }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          ansible-playbook -i "inventory/k8s/${ENVIRONMENT}.yml" \
+            playbooks/deploy_k8s_all.yml \
+            -e "environment=${ENVIRONMENT}" \
+            -v
+
+  #============================================================================
+  # JOB 3: Deploy Nautobot Application
+  #============================================================================
+  deploy-nautobot:
+    name: 🚀 Deploy Nautobot
+    runs-on: ubuntu-latest
+    needs: [initialize, setup-cluster]
+    if: always() && (needs.initialize.result == 'success')
+    environment: nautobot-${{ needs.initialize.outputs.environment }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Setup Tools
+        run: |
+          pip install pyyaml jmespath
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          
+          curl -LO "https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Setup SSH & Kubectl
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p ~/.kube ~/.ssh
+          echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.kube/config ~/.ssh/id_rsa
+
+      - name: Generate Helm Values
+        env:
+          ENVIRONMENT: ${{ needs.initialize.outputs.environment }}
+        run: |
+          python3 << 'PYTHON'
+          import yaml
+          import os
+          
+          env = os.environ.get('ENVIRONMENT', 'dev')
+          
+          # Load configs
+          try:
+              with open(f'group_vars/{env}/nautobot.yml', 'r') as f:
+                  env_config = yaml.safe_load(f) or {}
+          except:
+              env_config = {}
+          
+          try:
+              with open('group_vars/all/nautobot.yml', 'r') as f:
+                  all_config = yaml.safe_load(f) or {}
+          except:
+              all_config = {}
+          
+          config = {**all_config, **env_config}
+          
+          # Generate Helm values
+          helm_values = {
+              'image': {
+                  'repository': config.get('nautobot_image', 'networktocode/nautobot'),
+                  'tag': config.get('nautobot_version', '2.1.0')
+              },
+              'replicaCount': {
+                  'web': config.get('web_replicas', 3 if env == 'prod' else 2),
+                  'worker': config.get('worker_replicas', 3 if env == 'prod' else 2),
+                  'scheduler': config.get('scheduler_replicas', 2 if env == 'prod' else 1)
+              },
+              'resources': {
+                  'web': {
+                      'requests': {'cpu': '1000m', 'memory': '2Gi'},
+                      'limits': {'cpu': '2000m', 'memory': '4Gi'}
+                  }
+              },
+              'autoscaling': {
+                  'enabled': env == 'prod',
+                  'minReplicas': 3,
+                  'maxReplicas': 10
+              },
+              'postgresql': {
+                  'enabled': True,
+                  'auth': {
+                      'database': config.get('postgres_db', 'nautobot'),
+                      'username': config.get('postgres_user', 'nautobot'),
+                      'password': config.get('postgres_password', 'nautobot')
+                  }
+              },
+              'redis': {
+                  'enabled': True,
+                  'auth': {
+                      'enabled': True,
+                      'password': config.get('redis_password', 'nautobot')
+                  }
+              }
+          }
+          
+          with open('/tmp/helm-values.yaml', 'w') as f:
+              yaml.dump(helm_values, f)
+          
+          print("✅ Helm values generated")
+          PYTHON
+
+      - name: Deploy with Helm
+        env:
+          MASTER_IP: ${{ needs.initialize.outputs.master_ip }}
+        run: |
+          # Create namespace
+          kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f - || \
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f -"
+          
+          # Copy files and deploy
+          scp -o StrictHostKeyChecking=no -r $GITHUB_WORKSPACE/* ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
+          scp /tmp/helm-values.yaml ubuntu@$MASTER_IP:/tmp/
+          
+          ssh ubuntu@$MASTER_IP << 'DEPLOY'
+          cd /tmp/nautobot-deploy
+          helm upgrade --install nautobot ./helm/nautobot \
+            --namespace nautobot \
+            --values /tmp/helm-values.yaml \
+            --wait \
+            --timeout 15m \
+            --atomic
+          DEPLOY
+
+  #============================================================================
+  # JOB 4: Validate Deployment
+  #============================================================================
+  validate:
+    name: ✅ Validate Deployment
+    runs-on: ubuntu-latest
+    needs: [initialize, deploy-nautobot]
+    if: always() && (needs.deploy-nautobot.result == 'success')
+    
+    steps:
+      - name: Setup kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Health Check
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+          MASTER_IP: ${{ needs.initialize.outputs.master_ip }}
+        run: |
+          mkdir -p ~/.kube ~/.ssh
+          echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.kube/config ~/.ssh/id_rsa
+          
+          # Wait for pods
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=nautobot \
+            -n nautobot \
+            --timeout=600s || \
+          ssh ubuntu@$MASTER_IP "kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nautobot -n nautobot --timeout=600s"
+          
+          echo "✅ All pods ready"
+
+      - name: Get Access URL
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          MASTER_IP: ${{ needs.initialize.outputs.master_ip }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          INGRESS_IP=$(ssh ubuntu@$MASTER_IP "kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 DEPLOYMENT SUCCESSFUL!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "🌐 Access URL: http://$INGRESS_IP/"
+          echo "🔑 Username: admin"
+          echo "🔑 Password: admin123"
+          echo ""
+          echo "📊 Environment: ${{ needs.initialize.outputs.environment }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
