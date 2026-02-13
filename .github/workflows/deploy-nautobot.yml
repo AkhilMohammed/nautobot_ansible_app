@@ -189,8 +189,11 @@ jobs:
     name: 🚀 Deploy Nautobot
     runs-on: ubuntu-latest
     needs: [initialize, setup-cluster]
-    if: always() && (needs.initialize.result == 'success')
-    environment: nautobot-${{ needs.initialize.outputs.environment }}
+    if: |
+      always() && 
+      (needs.initialize.result == 'success') &&
+      (needs.setup-cluster.result == 'success' || needs.setup-cluster.result == 'skipped')
+    # environment: nautobot-${{ needs.initialize.outputs.environment }}  # Commented out - not required
     
     steps:
       - name: Checkout Code
