@@ -1,5 +1,5 @@
 # Nautobot Helm Chart - Production Configuration
-# Last updated: 2026-02-13 - Self-hosted runner deployment test
+# Last updated: 2026-02-13 - Testing passwordless sudo deployment
 
 # Docker image configuration
 image:
