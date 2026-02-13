@@ -115,11 +115,6 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_dns_models"
 
-  # Data Validation Engine plugin (testing automated deployment)
-  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-data-validation-engine.git@develop#egg=nautobot-data-validation-engine"
-    version: "develop"
-    module_name: "nautobot_data_validation_engine"
-
 # Blocklist legacy/incompatible plugins that may be injected via vault
 nautobot_git_packages_blocklist:
   - "nautobot_plugin_example"
@@ -146,9 +141,6 @@ nautobot_plugins_config:
     enable_intended: true
 
   nautobot_dns_models: {}
-
-  nautobot_data_validation_engine:
-    enabled: true
 
 # Celery worker configuration
 nautobot_celery_worker_count: 2
