@@ -231,95 +231,22 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.kube/config ~/.ssh/id_rsa
 
-      - name: Generate Helm Values
-        env:
-          ENVIRONMENT: ${{ needs.initialize.outputs.environment }}
-        run: |
-          python3 << 'PYTHON'
-          import yaml
-          import os
-          
-          env = os.environ.get('ENVIRONMENT', 'dev')
-          
-          # Load configs
-          try:
-              with open(f'group_vars/{env}/nautobot.yml', 'r') as f:
-                  env_config = yaml.safe_load(f) or {}
-          except:
-              env_config = {}
-          
-          try:
-              with open('group_vars/all/nautobot.yml', 'r') as f:
-                  all_config = yaml.safe_load(f) or {}
-          except:
-              all_config = {}
-          
-          config = {**all_config, **env_config}
-          
-          # Generate Helm values
-          helm_values = {
-              'image': {
-                  'repository': config.get('nautobot_image', 'networktocode/nautobot'),
-                  'tag': config.get('nautobot_version', '2.1.0')
-              },
-              'replicaCount': {
-                  'web': config.get('web_replicas', 3 if env == 'prod' else 2),
-                  'worker': config.get('worker_replicas', 3 if env == 'prod' else 2),
-                  'scheduler': config.get('scheduler_replicas', 2 if env == 'prod' else 1)
-              },
-              'resources': {
-                  'web': {
-                      'requests': {'cpu': '1000m', 'memory': '2Gi'},
-                      'limits': {'cpu': '2000m', 'memory': '4Gi'}
-                  }
-              },
-              'autoscaling': {
-                  'enabled': env == 'prod',
-                  'minReplicas': 3,
-                  'maxReplicas': 10
-              },
-              'postgresql': {
-                  'enabled': True,
-                  'auth': {
-                      'database': config.get('postgres_db', 'nautobot'),
-                      'username': config.get('postgres_user', 'nautobot'),
-                      'password': config.get('postgres_password', 'nautobot')
-                  }
-              },
-              'redis': {
-                  'enabled': True,
-                  'auth': {
-                      'enabled': True,
-                      'password': config.get('redis_password', 'nautobot')
-                  }
-              }
-          }
-          
-          with open('/tmp/helm-values.yaml', 'w') as f:
-              yaml.dump(helm_values, f)
-          
-          print("✅ Helm values generated")
-          PYTHON
-
       - name: Deploy with Helm
         env:
           MASTER_IP: ${{ needs.initialize.outputs.master_ip }}
         run: |
           # Create namespace
-          kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f - || \
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "kubectl create namespace nautobot --dry-run=client -o yaml | kubectl apply -f -"
           
-          # Create deployment directory and copy files
+          # Create deployment directory and copy Helm chart
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "mkdir -p /tmp/nautobot-deploy"
-          scp -o StrictHostKeyChecking=no -r $GITHUB_WORKSPACE/* ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
-          scp /tmp/helm-values.yaml ubuntu@$MASTER_IP:/tmp/
+          scp -o StrictHostKeyChecking=no -r helm/nautobot ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
           
-          # Deploy with Helm
+          # Deploy with Helm using the values.yaml from the repo
           ssh ubuntu@$MASTER_IP << 'DEPLOY'
           cd /tmp/nautobot-deploy
-          helm upgrade --install nautobot ./helm/nautobot \
+          helm upgrade --install nautobot ./nautobot \
             --namespace nautobot \
-            --values /tmp/helm-values.yaml \
             --wait \
             --timeout 15m \
             --atomic
