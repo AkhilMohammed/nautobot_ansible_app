@@ -171,15 +171,21 @@ jobs:
       - name: Deploy Kubernetes Cluster
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
           ENVIRONMENT: ${{ needs.initialize.outputs.environment }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
+          # Create vault password file
+          echo "$ANSIBLE_VAULT_PASSWORD" > ~/.vault_pass
+          chmod 600 ~/.vault_pass
+          
           ansible-playbook -i "inventory/k8s/${ENVIRONMENT}.yml" \
             playbooks/deploy_k8s_all.yml \
             -e "environment=${ENVIRONMENT}" \
+            --vault-password-file ~/.vault_pass \
             -v
 
   #============================================================================
