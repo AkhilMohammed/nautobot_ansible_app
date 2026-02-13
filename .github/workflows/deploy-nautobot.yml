@@ -44,7 +44,7 @@ on:
         default: false
 
 env:
-  ANSIBLE_VERSION: '2.15.0'
+  ANSIBLE_VERSION: '8.0.0'  # ansible 8.x includes ansible-core 2.15
   HELM_VERSION: '3.14.0'
   KUBECTL_VERSION: '1.28.0'
 
