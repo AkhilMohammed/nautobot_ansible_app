@@ -152,7 +152,7 @@ jobs:
     name: ☸️ Setup Kubernetes Cluster
     runs-on: self-hosted
     needs: initialize
-    if: needs.initialize.outputs.needs_setup == 'true'
+    if: false  # Cluster already exists - skip setup
     
     steps:
       - name: Checkout Code
