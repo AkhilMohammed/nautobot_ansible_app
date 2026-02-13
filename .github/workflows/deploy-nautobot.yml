@@ -54,7 +54,7 @@ jobs:
   #============================================================================
   initialize:
     name: 🔍 Initialize & Validate
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       environment: ${{ steps.config.outputs.environment }}
       config_changed: ${{ steps.changes.outputs.config_changed }}
@@ -150,7 +150,7 @@ jobs:
   #============================================================================
   setup-cluster:
     name: ☸️ Setup Kubernetes Cluster
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: initialize
     if: needs.initialize.outputs.needs_setup == 'true'
     
@@ -187,7 +187,7 @@ jobs:
   #============================================================================
   deploy-nautobot:
     name: 🚀 Deploy Nautobot
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [initialize, setup-cluster]
     if: |
       always() && 
@@ -320,7 +320,7 @@ jobs:
   #============================================================================
   validate:
     name: ✅ Validate Deployment
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [initialize, deploy-nautobot]
     if: always() && (needs.deploy-nautobot.result == 'success')
     
