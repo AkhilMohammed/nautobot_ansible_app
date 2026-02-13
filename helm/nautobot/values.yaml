@@ -1,4 +1,5 @@
 # Nautobot Helm Chart - Production Configuration
+# Last updated: 2026-02-13 - Automated deployment test
 
 # Docker image configuration
 image:
