@@ -126,7 +126,7 @@ postgresql:
   persistence:
     enabled: true
     size: 20Gi
-    storageClass: ""  # Use default storage class
+    storageClass: "local-path"  # Match existing PVCs
   resources:
     requests:
       cpu: 500m
@@ -176,7 +176,7 @@ redis:
   persistence:
     enabled: true
     size: 5Gi
-    storageClass: ""  # Use default storage class
+    storageClass: "local-path"  # Match existing PVCs
   maxmemory: "512mb"
   maxmemoryPolicy: "allkeys-lru"
   resources:
@@ -222,16 +222,16 @@ nautobot:
 # Persistent Storage
 persistence:
   enabled: true
-  storageClass: ""  # Use default storage class
+  storageClass: "local-path"  # Match existing PVCs
   media:
     size: 10Gi
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
   static:
     size: 2Gi
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
   git:
     size: 5Gi
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
 
 # Service Configuration
 service:
