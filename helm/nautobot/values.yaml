@@ -34,7 +34,7 @@ web:
     enabled: true
     httpGet:
       path: /health/
-      port: 8000
+      port: 8080
     initialDelaySeconds: 60
     periodSeconds: 10
     timeoutSeconds: 5
@@ -43,7 +43,7 @@ web:
     enabled: true
     httpGet:
       path: /health/
-      port: 8000
+      port: 8080
     initialDelaySeconds: 30
     periodSeconds: 5
     timeoutSeconds: 3
