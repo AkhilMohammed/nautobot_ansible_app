@@ -40,6 +40,9 @@ data:
     REDIS_HOST = "{{ .Values.redis.host }}"
     {{- end }}
     REDIS_PORT = {{ .Values.redis.service.port | default .Values.redis.port }}
+    {{- if .Values.redis.password }}
+    REDIS_PASSWORD = os.getenv("NAUTOBOT_REDIS_PASSWORD", "")
+    {{- end }}
     
     CACHES = {
         "default": {
@@ -56,7 +59,6 @@ data:
     
     # Celery Configuration
     {{- if .Values.redis.password }}
-    REDIS_PASSWORD = os.getenv("NAUTOBOT_REDIS_PASSWORD", "")
     CELERY_BROKER_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
     CELERY_RESULT_BACKEND = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1"
     {{- else }}
