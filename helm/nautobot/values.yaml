@@ -275,7 +275,7 @@ serviceAccount:
 
 # Init Containers
 initContainers:
-  enabled: true
+  enabled: false  # Disabled temporarily - DB schema already exists
   migrations:
     enabled: true
     resources:
