@@ -247,9 +247,9 @@ jobs:
           cd /tmp/nautobot-deploy
           helm upgrade --install nautobot ./nautobot \
             --namespace nautobot \
+            --create-namespace \
             --wait \
-            --timeout 15m \
-            --atomic
+            --timeout 20m
           DEPLOY
 
   #============================================================================
