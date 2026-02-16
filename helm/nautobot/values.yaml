@@ -31,7 +31,7 @@ web:
                     - web
             topologyKey: kubernetes.io/hostname
   livenessProbe:
-    enabled: true
+    enabled: false
     httpGet:
       path: /health/
       port: 8080
@@ -40,7 +40,7 @@ web:
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: true
+    enabled: false
     httpGet:
       path: /health/
       port: 8080
