@@ -55,8 +55,14 @@ data:
     }
     
     # Celery Configuration
+    {{- if .Values.redis.password }}
+    REDIS_PASSWORD = os.getenv("NAUTOBOT_REDIS_PASSWORD", "")
+    CELERY_BROKER_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
+    CELERY_RESULT_BACKEND = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1"
+    {{- else }}
     CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
     CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
+    {{- end }}
     
     # Secret Key
     SECRET_KEY = os.getenv("NAUTOBOT_SECRET_KEY", "")
