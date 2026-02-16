@@ -76,13 +76,21 @@ Environment variables for Nautobot
       name: {{ .Values.database.existingSecret }}
       key: {{ .Values.database.passwordKey }}
 - name: NAUTOBOT_DB_HOST
+  {{- if .Values.postgresql.enabled }}
+  value: {{ include "nautobot.fullname" . }}-postgresql.{{ .Release.Namespace }}.svc.cluster.local
+  {{- else }}
   value: {{ .Values.database.host | quote }}
+  {{- end }}
 - name: NAUTOBOT_DB_PORT
   value: {{ .Values.database.port | quote }}
 - name: NAUTOBOT_REDIS_HOST
+  {{- if .Values.redis.enabled }}
+  value: {{ include "nautobot.fullname" . }}-redis.{{ .Release.Namespace }}.svc.cluster.local
+  {{- else }}
   value: {{ .Values.redis.host | quote }}
+  {{- end }}
 - name: NAUTOBOT_REDIS_PORT
-  value: {{ .Values.redis.port | quote }}
+  value: {{ .Values.redis.service.port | default .Values.redis.port | quote }}
 - name: NAUTOBOT_REDIS_PASSWORD
   valueFrom:
     secretKeyRef:
