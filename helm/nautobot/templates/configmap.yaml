@@ -93,7 +93,7 @@ data:
     }
     
     # Metrics
-    METRICS_ENABLED = {{ .Values.nautobot.metricsEnabled }}
+    METRICS_ENABLED = {{ if .Values.nautobot.metricsEnabled }}True{{ else }}False{{ end }}
     
     # Session and CSRF
     SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
