@@ -115,6 +115,11 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_dns_models"
 
+  # BGP Models plugin (dev)
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-bgp-models.git@develop#egg=nautobot-bgp-models"
+    version: "develop"
+    module_name: "nautobot_bgp_models"
+
 # Blocklist legacy/incompatible plugins that may be injected via vault
 nautobot_git_packages_blocklist:
   - "nautobot_plugin_example"
@@ -141,6 +146,8 @@ nautobot_plugins_config:
     enable_intended: true
 
   nautobot_dns_models: {}
+
+  nautobot_bgp_models: {}
 
 # Celery worker configuration
 nautobot_celery_worker_count: 2
