@@ -39,11 +39,24 @@ spec:
             - sh
             - -c
             - |
-              echo "Installing plugins system-wide..."
+              set -e
+              echo "==> Installing Nautobot plugins..."
+              # Ensure git is available for Git-based installations
+              if ! command -v git >/dev/null 2>&1; then
+                echo "Installing git..."
+                apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || echo "Warning: Could not install git"
+              fi
+              # Install each plugin
               {{- range .Values.nautobot.plugins.packages }}
-              pip install --target=/opt/plugins {{ .name }}{{ if .version }}=={{ .version }}{{ end }}
+              echo "Installing plugin: {{ .name }}"
+              if pip install --no-cache-dir --target=/opt/plugins {{ .name }}{{ if .version }}=={{ .version }}{{ end }}; then
+                echo "✓ Successfully installed: {{ .name }}"
+              else
+                echo "✗ Failed to install: {{ .name }}"
+                exit 1
+              fi
               {{- end }}
-              echo "Plugins installed successfully"
+              echo "==> All plugins installed successfully"
           volumeMounts:
             - name: plugins
               mountPath: /opt/plugins

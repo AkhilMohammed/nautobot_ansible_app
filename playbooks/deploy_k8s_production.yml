@@ -2175,6 +2175,25 @@
           --dry-run=client -o yaml | kubectl apply -f -
       no_log: true
 
+    - name: Generate plugin configuration from nautobot_git_packages
+      ansible.builtin.set_fact:
+        plugin_packages_list: "{{ nautobot_git_packages | default([]) | map(attribute='module_name') | list }}"
+        plugin_git_urls: "{{ nautobot_git_packages | default([]) | map(attribute='name') | list }}"
+      when: nautobot_git_packages is defined
+
+    - name: Display detected plugins
+      ansible.builtin.debug:
+        msg:
+          - "🔌 Plugins to be installed:"
+          - "{{ plugin_packages_list | default([]) }}"
+          - "📦 Total plugin count: {{ (plugin_packages_list | default([])) | length }}"
+
+    - name: Create Helm values file with plugins
+      ansible.builtin.template:
+        src: ../templates/nautobot-helm-values.yaml.j2
+        dest: /home/{{ ansible_user }}/nautobot-values.yaml
+        mode: '0644'
+
     - name: Clean up manually created TLS resources (prevents Helm conflicts)
       ansible.builtin.shell: |
         # Remove manually created certificate that conflicts with Helm
@@ -2206,24 +2225,26 @@
         seconds: 5
       when: helm_uninstall is changed
 
-    - name: Deploy Nautobot with Helm
+    - name: Deploy Nautobot with Helm (with plugins from nautobot.yml)
       ansible.builtin.command: >
         helm upgrade --install nautobot /home/{{ ansible_user }}/nautobot-helm
         --namespace nautobot
-        --set image.tag={{ nautobot_version }}
-        --set database.host={{ nautobot_db.host }}
-        --set database.port={{ nautobot_db.port }}
+        --values /home/{{ ansible_user }}/nautobot-values.yaml
+        --set database.host=nautobot-postgresql
+        --set database.port=5432
         --set database.name={{ vault_database_name }}
-        --set redis.host={{ nautobot_redis.host }}
-        --set redis.port={{ nautobot_redis.port }}
-        --set ingress.enabled=true
-        --set ingress.host={{ ansible_host }}
-        --set web.replicas=2
-        --set worker.replicas=2
-        --set scheduler.replicas=1
+        --set redis.host=nautobot-redis
+        --set redis.port=6379
+        --set postgresql.enabled=true
+        --set redis.enabled=true
+        --atomic
+        --cleanup-on-fail
         --wait
-        --timeout=10m
+        --timeout=15m
       register: helm_deploy
+      retries: 2
+      delay: 30
+      until: helm_deploy.rc == 0
 
     - name: Wait for Nautobot pods to be ready
       ansible.builtin.command: >
