@@ -107,7 +107,7 @@ data:
     {{- if .Values.nautobot.plugins.enabled }}
     PLUGINS = [
       {{- range .Values.nautobot.plugins.packages }}
-      "{{ .name }}",
+      "{{ .module }}",
       {{- end }}
     ]
     

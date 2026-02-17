@@ -32,6 +32,24 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if .Values.initContainers.enabled }}
       initContainers:
+        - name: install-plugins
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              {{- if .Values.nautobot.plugins.enabled }}
+              echo "Installing plugins..."
+              {{- range .Values.nautobot.plugins.packages }}
+              pip install {{.name}}{{ if .version }}=={{ .version }}{{ end }}
+              {{- end }}
+              echo "Plugins installed successfully"
+              {{- else }}
+              echo "No plugins to install"
+              {{- end }}
+          env:
+            {{- include "nautobot.env" . | nindent 12 }}
         - name: nautobot-migrations
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
