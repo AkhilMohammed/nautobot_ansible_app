@@ -121,9 +121,6 @@ nautobot_git_packages:
     module_name: "nautobot_bgp_models"
 
   # Firewall Models plugin (dev) - Testing automated deployment
-  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-firewall-models.git@develop#egg=nautobot-firewall-models"
-    version: "develop"
-    module_name: "nautobot_firewall_models"
 
 # Blocklist legacy/incompatible plugins that may be injected via vault
 nautobot_git_packages_blocklist:
