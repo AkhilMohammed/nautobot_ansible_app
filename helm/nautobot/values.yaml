@@ -32,7 +32,7 @@ web:
                     - web
             topologyKey: kubernetes.io/hostname
   livenessProbe:
-    enabled: false
+    enabled: true  # Enable for production
     httpGet:
       path: /health/
       port: 8080
@@ -41,7 +41,7 @@ web:
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: false
+    enabled: true  # Enable for production
     httpGet:
       path: /health/
       port: 8080
@@ -246,23 +246,54 @@ persistence:
 
 # Service Configuration
 service:
-  type: LoadBalancer  # Changed from ClusterIP for direct external access
+  type: LoadBalancer  # LoadBalancer for direct external access
   port: 8000
-  annotations: {}
+  annotations:
+    # MetalLB annotations
+    metallb.universe.tf/allow-shared-ip: nautobot
+    # Prometheus monitoring
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
 
 # Ingress Configuration
 ingress:
   enabled: true
   className: nginx
   annotations:
+    # SSL/TLS Configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Change to your issuer
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    # Proxy settings
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  host: nautobot.local  # Will be overridden by Ansible
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    # Monitoring
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "10254"
+  hosts:
+    - host: nautobot.local  # Change to your domain
+      paths:
+        - path: /
+          pathType: Prefix
   tls:
-    enabled: false
+    enabled: true  # Enable TLS for production
     secretName: nautobot-tls
+  certManager:
+    enabled: true  # Enable cert-manager integration
+    issuer: letsencrypt-prod  # ClusterIssuer name
+    issuerKind: ClusterIssuer  # ClusterIssuer or Issuer
+    duration: 2160h  # 90 days
+    renewBefore: 720h  # 30 days before expiry
 
 # Security Context (Container level - no fsGroup)
 securityContext:
@@ -301,8 +332,16 @@ initContainers:
 metrics:
   enabled: true
   serviceMonitor:
-    enabled: false
+    enabled: true  # Enable for Prometheus Operator
     interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: prometheus  # Match your Prometheus operator label
+    honorLabels: true
+  prometheusRule:
+    enabled: true  # Enable alerting rules
+    labels:
+      release: prometheus
 
 # Extra environment variables
 extraEnv: []
