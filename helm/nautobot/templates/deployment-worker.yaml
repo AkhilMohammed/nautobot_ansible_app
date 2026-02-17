@@ -40,13 +40,13 @@ spec:
             - -c
             - |
               set -e
-              echo "==> Installing Nautobot plugins..."
+              echo "==> Installing Nautobot plugins to /opt/plugins..."
               # Ensure git is available for Git-based installations
               if ! command -v git >/dev/null 2>&1; then
                 echo "Installing git..."
                 apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || echo "Warning: Could not install git"
               fi
-              # Install each plugin
+              # Install each plugin to shared volume
               {{- range .Values.nautobot.plugins.packages }}
               echo "Installing plugin: {{ .name }}"
               if pip install --no-cache-dir --target=/opt/plugins {{ .name }}{{ if .version }}=={{ .version }}{{ end }}; then
@@ -56,7 +56,7 @@ spec:
                 exit 1
               fi
               {{- end }}
-              echo "==> All plugins installed successfully"
+              echo "==> All plugins installed successfully to /opt/plugins"
           volumeMounts:
             - name: plugins
               mountPath: /opt/plugins
