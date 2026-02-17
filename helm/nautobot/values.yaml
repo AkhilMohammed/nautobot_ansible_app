@@ -222,13 +222,21 @@ nautobot:
   
   # Plugins Configuration
   plugins:
-    enabled: false  # Temporarily disabled to deploy production monitoring
+    enabled: true  # Re-enabled with DNS and BGP plugins
     packages:
       - name: nautobot-device-lifecycle-mgmt  # pip package name
         module: nautobot_device_lifecycle_mgmt  # Python module name (used in PLUGINS list)
         version: ""  # Auto-detect latest compatible version
+      - name: nautobot-bgp-models
+        module: nautobot_bgp_models
+        version: ""  # Auto-detect latest compatible version
+      - name: nautobot-dns-manager
+        module: nautobot_dns_manager
+        version: ""  # Auto-detect latest compatible version
     config:
       nautobot_device_lifecycle_mgmt: {}
+      nautobot_bgp_models: {}
+      nautobot_dns_manager: {}
 
 # Persistent Storage
 persistence:
