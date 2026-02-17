@@ -1,5 +1,6 @@
 # Nautobot Helm Chart - Production Configuration
-# Last updated: 2026-02-13 - Deployment with vault password support
+# Last updated: 2026-02-17 - Plugin support fully functional
+# Plugins are automatically installed via init containers with device-lifecycle-mgmt v4.0.0
 
 # Docker image configuration
 image:
