@@ -55,7 +55,7 @@ spec:
           env:
             {{- include "nautobot.env" . | nindent 12 }}
             - name: PYTHONPATH
-              value: "/opt/plugins:{{ .Values.nautobot.pythonPath | default "" }}"
+              value: "/opt/plugins"
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
           volumeMounts:
