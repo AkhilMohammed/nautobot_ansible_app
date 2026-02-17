@@ -41,9 +41,12 @@ spec:
             - |
               echo "Installing plugins system-wide..."
               {{- range .Values.nautobot.plugins.packages }}
-              pip install --break-system-packages {{ .name }}{{ if .version }}=={{ .version }}{{ end }}
+              pip install --target=/opt/plugins {{ .name }}{{ if .version }}=={{ .version }}{{ end }}
               {{- end }}
               echo "Plugins installed successfully"
+          volumeMounts:
+            - name: plugins
+              mountPath: /opt/plugins
           env:
             {{- include "nautobot.env" . | nindent 12 }}
       {{- end }}
@@ -54,6 +57,8 @@ spec:
           command: ["nautobot-server", "celery", "worker", "-l", "{{ .Values.nautobot.logLevel }}", "--events"]
           env:
             {{- include "nautobot.env" . | nindent 12 }}
+            - name: PYTHONPATH
+              value: "/opt/plugins:{{ .Values.nautobot.pythonPath | default \"\" }}"
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           volumeMounts:
@@ -64,9 +69,13 @@ spec:
               mountPath: /opt/nautobot/media
             - name: git
               mountPath: /opt/nautobot/git
+            - name: plugins
+              mountPath: /opt/plugins
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
       volumes:
+        - name: plugins
+          emptyDir: {}
         - name: config
           configMap:
             name: nautobot-config
