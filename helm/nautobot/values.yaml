@@ -285,6 +285,7 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+  host: nautobot.local  # Legacy single host for backward compatibility
   tls:
     enabled: true  # Enable TLS for production
     secretName: nautobot-tls
