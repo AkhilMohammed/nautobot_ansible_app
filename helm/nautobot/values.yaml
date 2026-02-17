@@ -246,7 +246,7 @@ persistence:
 
 # Service Configuration
 service:
-  type: ClusterIP
+  type: LoadBalancer  # Changed from ClusterIP for direct external access
   port: 8000
   annotations: {}
 
