@@ -285,10 +285,10 @@ ingress:
     enabled: true  # Enable TLS for production
     secretName: nautobot-tls
   certManager:
-    enabled: true  # Enable cert-manager integration
-    issuer: letsencrypt-prod  # ClusterIssuer name
-    issuerKind: ClusterIssuer  # ClusterIssuer or Issuer
-    duration: 2160h  # 90 days
+    enabled: false  # Disabled - using manual self-signed certificate
+    issuer: selfsigned-issuer  # Self-signed Issuer name
+    issuerKind: Issuer  # ClusterIssuer or Issuer
+    duration: 8760h  # 1 year
     renewBefore: 720h  # 30 days before expiry
 
 # Security Context (Container level - no fsGroup)
