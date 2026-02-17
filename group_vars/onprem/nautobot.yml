@@ -90,6 +90,41 @@ github_runner_name: "onprem-runner-01"  # Name for the self-hosted runner
 # 3. GitHub Actions will automatically deploy the changes
 # ============================================================================
 
+# Git-based plugins (installed from GitHub)
+nautobot_git_packages:
+  # Device Lifecycle Management plugin
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt"
+    version: "develop"
+    module_name: "nautobot_device_lifecycle_mgmt"
+
+  # DNS Models plugin
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-dns-models.git@develop#egg=nautobot-dns-models"
+    version: "develop"
+    module_name: "nautobot_dns_models"
+
+  # BGP Models plugin
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-bgp-models.git@develop#egg=nautobot-bgp-models"
+    version: "develop"
+    module_name: "nautobot_bgp_models"
+
+  # Firewall Models plugin
+  - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-firewall-models.git@develop#egg=nautobot-firewall-models"
+    version: "develop"
+    module_name: "nautobot_firewall_models"
+
+# Blocklist legacy/incompatible plugins
+nautobot_git_packages_blocklist:
+  - "nautobot_plugin_example"
+
+nautobot_git_packages_blocklist_regex: "nautobot-plugin-device-tracker|nautobot-plugin-example"
+
+# Plugin Configuration
+nautobot_plugins_config:
+  nautobot_device_lifecycle_mgmt: {}
+  nautobot_dns_models: {}
+  nautobot_bgp_models: {}
+  nautobot_firewall_models: {}
+
 nautobot_plugins:
   # Example plugins - Uncomment and modify as needed
   
