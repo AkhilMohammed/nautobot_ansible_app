@@ -225,7 +225,7 @@ nautobot:
     packages:
       - name: nautobot-device-lifecycle-mgmt  # pip package name
         module: nautobot_device_lifecycle_mgmt  # Python module name (used in PLUGINS list)
-        version: "2.1.0"
+        version: ""  # Auto-detect latest compatible version
     config:
       nautobot_device_lifecycle_mgmt: {}
 

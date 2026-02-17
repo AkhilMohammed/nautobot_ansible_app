@@ -27,6 +27,23 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.nautobot.plugins.enabled }}
+      initContainers:
+        - name: install-plugins
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Installing plugins system-wide..."
+              {{- range .Values.nautobot.plugins.packages }}
+              pip install --break-system-packages {{ .name }}{{ if .version }}=={{ .version }}{{ end }}
+              {{- end }}
+              echo "Plugins installed successfully"
+          env:
+            {{- include "nautobot.env" . | nindent 12 }}
+      {{- end }}
       containers:
         - name: nautobot-scheduler
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
