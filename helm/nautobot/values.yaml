@@ -218,6 +218,15 @@ nautobot:
   debug: false
   logLevel: INFO
   metricsEnabled: true
+  
+  # Plugins Configuration
+  plugins:
+    enabled: true
+    packages:
+      - name: nautobot-data-validation-engine
+        version: "3.1.0"
+    config:
+      nautobot_data_validation_engine: {}
 
 # Persistent Storage
 persistence:
@@ -275,7 +284,7 @@ serviceAccount:
 
 # Init Containers
 initContainers:
-  enabled: false  # Disabled temporarily - DB schema already exists
+  enabled: true  # Re-enabled for plugin installation
   migrations:
     enabled: true
     resources:

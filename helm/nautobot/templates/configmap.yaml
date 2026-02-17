@@ -103,6 +103,17 @@ data:
     # Metrics
     METRICS_ENABLED = {{ if .Values.nautobot.metricsEnabled }}True{{ else }}False{{ end }}
     
+    # Plugins
+    {{- if .Values.nautobot.plugins.enabled }}
+    PLUGINS = [
+      {{- range .Values.nautobot.plugins.packages }}
+      "{{ .name }}",
+      {{- end }}
+    ]
+    
+    PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
+    {{- end }}
+    
     # Session and CSRF
     SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
     CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
