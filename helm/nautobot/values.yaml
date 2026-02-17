@@ -223,11 +223,11 @@ nautobot:
   plugins:
     enabled: true
     packages:
-      - name: nautobot-data-validation-engine  # pip package name
-        module: nautobot_data_validation_engine  # Python module name
-        version: "3.1.0"
+      - name: nautobot-device-lifecycle-mgmt  # pip package name
+        module: nautobot_device_lifecycle_mgmt  # Python module name (used in PLUGINS list)
+        version: "2.1.0"
     config:
-      nautobot_data_validation_engine: {}
+      nautobot_device_lifecycle_mgmt: {}
 
 # Persistent Storage
 persistence:
