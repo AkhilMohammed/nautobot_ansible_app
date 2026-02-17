@@ -31,4 +31,14 @@ spec:
                 name: nautobot
                 port:
                   number: {{ .Values.service.port }}
+    # Default rule for direct IP access
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautobot
+                port:
+                  number: {{ .Values.service.port }}
 {{- end }}
