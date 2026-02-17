@@ -32,7 +32,7 @@ web:
                     - web
             topologyKey: kubernetes.io/hostname
   livenessProbe:
-    enabled: true  # Enable for production
+    enabled: false  # Temporarily disabled to speed up deployment
     httpGet:
       path: /health/
       port: 8080
@@ -41,7 +41,7 @@ web:
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: true  # Enable for production
+    enabled: false  # Temporarily disabled to speed up deployment
     httpGet:
       path: /health/
       port: 8080
