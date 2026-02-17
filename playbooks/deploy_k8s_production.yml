@@ -98,15 +98,18 @@
 
     - name: Determine if cleanup is needed
       ansible.builtin.set_fact:
-        needs_cleanup: "{{ force_cleanup | default(false) | bool or (kubelet_conf_exists.stat.exists and kubelet_status.status.ActiveState != 'active') }}"
+        needs_cleanup: "{{ force_cleanup | default(false) | bool }}"
 
     - name: Display cleanup decision
       ansible.builtin.debug:
         msg:
-          - "Cleanup decision: {{ 'YES - will cleanup' if needs_cleanup else 'NO - cluster appears healthy, skipping cleanup' }}"
-          - "Force cleanup flag: {{ force_cleanup | default('not set') }}"
+          - "⚠️  CLEANUP MODE: {{ 'ENABLED - Will destroy and rebuild cluster!' if needs_cleanup else 'DISABLED - Will keep existing cluster' }}"
+          - "Force cleanup flag: {{ force_cleanup | default('not set - SAFE MODE') }}"
           - "kubelet.conf exists: {{ kubelet_conf_exists.stat.exists }}"
           - "kubelet status: {{ kubelet_status.status.ActiveState if kubelet_status.status is defined else 'not running' }}"
+          - ""
+          - "ℹ️  To force cleanup: run with -e force_cleanup=true"
+          - "ℹ️  Automatic cleanup on kubelet failure has been DISABLED for safety"
 
 - name: COMPLETE SYSTEM CLEANUP - Only when needed
   hosts: k8s_control_plane,k8s_workers
