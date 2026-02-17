@@ -2172,6 +2172,37 @@
           --dry-run=client -o yaml | kubectl apply -f -
       no_log: true
 
+    - name: Clean up manually created TLS resources (prevents Helm conflicts)
+      ansible.builtin.shell: |
+        # Remove manually created certificate that conflicts with Helm
+        kubectl delete certificate nautobot-tls -n nautobot 2>/dev/null || true
+        kubectl delete issuer selfsigned-issuer -n nautobot 2>/dev/null || true
+        kubectl delete secret nautobot-tls -n nautobot 2>/dev/null || true
+        # Clean up orphaned Helm metadata if exists
+        kubectl delete secret -n nautobot -l owner=helm,name=nautobot 2>/dev/null || true
+        echo "✓ Cleaned up manual TLS resources and orphaned Helm metadata"
+      register: tls_cleanup
+      changed_when: "'deleted' in tls_cleanup.stdout"
+
+    - name: Check for existing Helm release
+      ansible.builtin.command: helm list -n nautobot -o json
+      register: helm_releases
+      changed_when: false
+      failed_when: false
+
+    - name: Uninstall existing Nautobot release if corrupted
+      ansible.builtin.command: helm uninstall nautobot -n nautobot
+      when: 
+        - helm_releases.stdout != '[]'
+        - helm_releases.stdout | from_json | selectattr('name', 'equalto', 'nautobot') | selectattr('status', 'in', ['failed', 'pending-install', 'pending-upgrade']) | list | length > 0
+      register: helm_uninstall
+      failed_when: false
+
+    - name: Wait after cleanup
+      ansible.builtin.pause:
+        seconds: 5
+      when: helm_uninstall is changed
+
     - name: Deploy Nautobot with Helm
       ansible.builtin.command: >
         helm upgrade --install nautobot /home/{{ ansible_user }}/nautobot-helm
