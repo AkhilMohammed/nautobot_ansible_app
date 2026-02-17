@@ -126,44 +126,6 @@ nautobot_plugins_config:
   nautobot_bgp_models: {}
   nautobot_firewall_models: {}
 
-nautobot_plugins:
-  # Example plugins - Uncomment and modify as needed
-  
-  # # Nautobot Device Lifecycle Management
-  # - name: nautobot-device-lifecycle-mgmt
-  #   version: "latest"  # or specific version like "2.0.0"
-  #   git_url: ""  # Leave empty for PyPI install
-  #   config:
-  #     barcoded_assets:
-  #       - "DeviceType"
-  #       - "Device"
-  
-  # # Nautobot Golden Config
-  # - name: nautobot-golden-config
-  #   version: "latest"
-  #   config:
-  #     enable_backup: true
-  #     enable_compliance: true
-  #     enable_intended: true
-  
-  # # Nautobot Capacity Metrics
-  # - name: nautobot-capacity-metrics
-  #   version: "latest"
-  
-  # # Custom plugin from Git
-  # - name: my-custom-plugin
-  #   version: "main"
-  #   git_url: "https://github.com/myorg/my-custom-plugin.git"
-  #   config:
-  #     custom_setting: "value"
-
-# Plugin Configuration Dictionary (auto-generated from above list)
-nautobot_plugins_config: {}
-# This will be populated automatically by the deployment playbook
-
-# Example of manual plugin configuration (if not using the list above):
-# nautobot_plugins_config:
-#   nautobot_device_lifecycle_mgmt:
-#     barcoded_assets:
-#       - "DeviceType"
-#       - "Device"
+# Celery worker configuration
+nautobot_celery_worker_count: 2
+nautobot_celery_worker_autoscale: "4,2"
