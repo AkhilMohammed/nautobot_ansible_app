@@ -121,6 +121,8 @@ nautobot_git_packages:
     module_name: "nautobot_bgp_models"
 
 
+
+  # Pipeline trigger: dummy change for CI
   # Firewall Models plugin (dev) - Testing automated deployment
 
   # Blocklist legacy/incompatible plugins that may be injected via vault
