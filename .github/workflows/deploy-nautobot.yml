@@ -241,7 +241,9 @@ jobs:
           # Create deployment directory and copy Helm chart and values file
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "mkdir -p /tmp/nautobot-deploy"
           scp -o StrictHostKeyChecking=no -r helm/nautobot ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
-          scp -o StrictHostKeyChecking=no /tmp/nautobot-values-with-plugins.yaml ubuntu@$MASTER_IP:/tmp/nautobot-deploy/nautobot-values.yaml
+          # Generate Helm values file from Ansible/group_vars and vault
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "ansible-playbook -i /etc/ansible/hosts /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt --tags generate_helm_values --limit master"
+          scp -o StrictHostKeyChecking=no /home/ubuntu/nautobot_ansible_app/nautobot-values.yaml ubuntu@$MASTER_IP:/tmp/nautobot-deploy/nautobot-values.yaml
 
           # Deploy with Helm using the correct values file
           ssh ubuntu@$MASTER_IP << 'DEPLOY'
