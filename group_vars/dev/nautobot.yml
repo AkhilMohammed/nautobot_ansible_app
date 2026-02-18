@@ -120,11 +120,12 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_bgp_models"
 
+
   # Firewall Models plugin (dev) - Testing automated deployment
 
-# Blocklist legacy/incompatible plugins that may be injected via vault
-nautobot_git_packages_blocklist:
-  - "nautobot_plugin_example"
+  # Blocklist legacy/incompatible plugins that may be injected via vault
+  nautobot_git_packages_blocklist:
+    - "nautobot_plugin_example"
 
 nautobot_git_packages_blocklist_regex: "nautobot-plugin-device-tracker|nautobot-plugin-example"
 
