@@ -1,5 +1,5 @@
 ---
-# oDevelopment Environment Configuration
+# Development Environment Configuration
 
 nautobot_user: "nautobot"
 nautobot_group: "nautobot"
