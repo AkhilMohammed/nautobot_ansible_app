@@ -95,7 +95,7 @@ nautobot_pip_packages:
   - name: "psycopg2-binary"
 
 # Azure DevOps is used - runner job synced from Git repo
-# Your custom plugins installed from Git branches
+# g Your custom plugins installed from Git branches
 nautobot_git_packages:
   # Official NTC plugins from GitHub (develop branch)
   - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-ssot.git@develop#egg=nautobot-ssot"
