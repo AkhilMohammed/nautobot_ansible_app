@@ -80,17 +80,7 @@ PLUGINS = [
 
 ]
 
-{{- $pluginsConfig := dict }}
-{{- if and (hasKey .Values "nautobot") (typeIs "map" (get .Values "nautobot")) }}
-  {{- $nautobot := get .Values "nautobot" }}
-  {{- if and (hasKey $nautobot "plugins") (typeIs "map" (get $nautobot "plugins")) }}
-    {{- $plugins := get $nautobot "plugins" }}
-    {{- if and (hasKey $plugins "config") (typeIs "map" (get $plugins "config")) }}
-      {{- $pluginsConfig = get $plugins "config" }}
-    {{- end }}
-  {{- end }}
-{{- end }}
-PLUGINS_CONFIG = {{ $pluginsConfig | toJson }}
+PLUGINS_CONFIG = {{ get (get (get .Values "nautobot" | default (dict)) "plugins" | default (dict)) "config" | default (dict) | toJson }}
 PLUGIN_EOF
               
               export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
