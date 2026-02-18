@@ -20,7 +20,7 @@ nautobot_version: "3.0.6"
 
 systemd_path: "/etc/systemd/system"
 
-# fDatabase Configuration
+# Database Configuration
 nautobot_db:
   engine: "django.db.backends.postgresql"
   name: "{{ database_name | default('nautobot') }}"
