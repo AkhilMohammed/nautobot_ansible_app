@@ -2,24 +2,24 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: nautobot-pre-install-{{ .Release.Revision }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "nautobot.labels" . | nindent 4 }}
-    app.kubernetes.io/component: pre-install
-  annotations:
-    "helm.sh/hook": pre-upgrade,pre-install
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation
-spec:
-  backoffLimit: 3
-  template:
-    metadata:
-      labels:
-        {{- include "nautobot.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: pre-install
-    spec:
-      {{- if .Values.serviceAccount.create }}
+        python3 << 'PYEOF'
+import os
+import django
+os.environ.setdefault('NAUTOBOT_CONFIG', '/tmp/nautobot_config.py')
+django.setup()
+from django.contrib.auth import get_user_model
+User = get_user_model()
+username = os.environ.get('NAUTOBOT_ADMIN_USERNAME', 'admin')
+if not User.objects.filter(username=username).exists():
+  User.objects.create_superuser(
+    username=username,
+    email=os.environ.get('NAUTOBOT_ADMIN_EMAIL', 'admin@example.com'),
+    password=os.environ.get('NAUTOBOT_ADMIN_PASSWORD', 'admin')
+  )
+  print(f"✓ Superuser '{username}' created")
+else:
+  print(f"✓ Superuser '{username}' already exists")
+PYEOF
       serviceAccountName: {{ include "nautobot.serviceAccountName" . }}
       {{- end }}
       restartPolicy: Never
@@ -108,7 +108,6 @@ PLUGIN_EOF
               
               echo ""
               echo "==> Step 6: Creating Superuser (if not exists)..."
-              python3 << 'PYEOF'
 import os
 import django
 os.environ.setdefault('NAUTOBOT_CONFIG', '/tmp/nautobot_config.py')
@@ -132,8 +131,14 @@ PYEOF
               echo "  Pre-Install Job Completed Successfully!"
               echo "  All plugins ready for deployment"
               echo "============================================"
-          env:
-            {{- include "nautobot.env" . | nindent 12 }}
+              
+                echo ""
+                echo "============================================"
+                echo "  Pre-Install Job Completed Successfully!"
+                echo "  All plugins ready for deployment"
+                echo "============================================"
+             env:
+              {{- include "nautobot.env" . | nindent 12 }}
 
           volumeMounts:
             - name: config
