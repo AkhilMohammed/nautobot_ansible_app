@@ -106,7 +106,6 @@ PLUGIN_EOF
                 exit 1
               fi
               
-              {{- if .Values.nautobot.createSuperuser.enabled }}
               echo ""
               echo "==> Step 6: Creating Superuser (if not exists)..."
               python3 << 'PYEOF'
@@ -127,7 +126,6 @@ if not User.objects.filter(username=username).exists():
 else:
     print(f"✓ Superuser '{username}' already exists")
 PYEOF
-              {{- end }}
               
               echo ""
               echo "============================================"
@@ -136,17 +134,7 @@ PYEOF
               echo "============================================"
           env:
             {{- include "nautobot.env" . | nindent 12 }}
-            {{- if .Values.nautobot.createSuperuser.enabled }}
-            - name: NAUTOBOT_ADMIN_USERNAME
-              value: {{ .Values.nautobot.createSuperuser.username | quote }}
-            - name: NAUTOBOT_ADMIN_EMAIL
-              value: {{ .Values.nautobot.createSuperuser.email | quote }}
-            - name: NAUTOBOT_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "nautobot.fullname" . }}-secrets
-                  key: admin-password
-            {{- end }}
+
           volumeMounts:
             - name: config
               mountPath: /opt/nautobot/nautobot_config.py
