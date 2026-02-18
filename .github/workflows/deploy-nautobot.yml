@@ -242,11 +242,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "mkdir -p /tmp/nautobot-deploy"
           scp -o StrictHostKeyChecking=no -r helm/nautobot ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
           # Ensure Ansible is installed and available in PATH for non-interactive SSH
-          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo apt-get update && sudo apt-get install -y ansible && echo 'export PATH=\"$PATH:/usr/bin:/usr/local/bin\"' >> ~/.bashrc"
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do echo 'Waiting for dpkg lock...'; sleep 5; done; sudo apt-get update && sudo apt-get install -y ansible && echo 'export PATH=\"$PATH:/usr/bin:/usr/local/bin\"' >> ~/.bashrc"
           # Confirm ansible-playbook is available
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "which ansible-playbook || (echo 'Ansible not found in PATH' && exit 1)"
           # Generate Helm values file from Ansible/group_vars and vault
-          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "ansible-playbook -i /etc/ansible/hosts /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt --tags generate_helm_values --limit master"
+          # Use full path to ansible-playbook to avoid PATH issues
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "/usr/bin/ansible-playbook -i /etc/ansible/hosts /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt --tags generate_helm_values --limit master"
           scp -o StrictHostKeyChecking=no /home/ubuntu/nautobot_ansible_app/nautobot-values.yaml ubuntu@$MASTER_IP:/tmp/nautobot-deploy/nautobot-values.yaml
 
           # Deploy with Helm using the correct values file
