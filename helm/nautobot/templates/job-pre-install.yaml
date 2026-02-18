@@ -80,7 +80,7 @@ PLUGINS = [
 
 ]
 
-PLUGINS_CONFIG = {{ (index .Values "nautobot" "plugins" "config") | default (dict) | toJson }}
+PLUGINS_CONFIG = {{ (lookup "Values.nautobot.plugins.config" .) | default (dict) | toJson }}
 PLUGIN_EOF
               
               export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
