@@ -77,7 +77,7 @@ PYEOF
 PLUGINS = [
 {{- range .Values.nautobot.plugins.packages }}
     "{{ .module }}",
-{{- end }}
+
 ]
 
 PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
