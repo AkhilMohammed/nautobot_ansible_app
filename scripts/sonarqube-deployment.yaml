@@ -96,11 +96,13 @@ spec:
               name: http
           env:
             - name: SONAR_JDBC_URL
-              value: "jdbc:h2:tcp://localhost:9092/sonar"
+              value: "jdbc:postgresql://sonarqube-postgresql:5432/sonarqube"
             - name: SONAR_JDBC_USERNAME
               value: "sonar"
             - name: SONAR_JDBC_PASSWORD
               value: "sonar"
+            - name: SONAR_ES_BOOTSTRAP_CHECKS_DISABLE
+              value: "true"
           resources:
             requests:
               cpu: 500m

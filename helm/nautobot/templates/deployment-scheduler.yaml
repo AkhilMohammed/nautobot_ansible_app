@@ -27,48 +27,56 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- if .Values.nautobot.plugins.enabled }}
-      initContainers:
-        - name: install-plugins
+      containers:
+        - name: nautobot-scheduler
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.nautobot.plugins.enabled }}
           command:
             - sh
             - -c
             - |
               set -e
-              echo "==> Installing Nautobot plugins to /opt/plugins..."
-              # Ensure git is available for Git-based installations
+              echo "==> Installing Git plugins at runtime..."
               if ! command -v git >/dev/null 2>&1; then
                 echo "Installing git..."
-                apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || echo "Warning: Could not install git"
+                apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || true
               fi
-              # Install each plugin to shared volume
               {{- range .Values.nautobot.plugins.packages }}
-              echo "Installing plugin: {{ .name }}"
-              if pip install --no-cache-dir --target=/opt/plugins {{ .name }}{{ if .version }}=={{ .version }}{{ end }}; then
-                echo "✓ Successfully installed: {{ .name }}"
-              else
-                echo "✗ Failed to install: {{ .name }}"
-                exit 1
-              fi
+              echo "Installing: {{ .name }}"
+              pip install --no-cache-dir {{ .name }} || (echo "ERROR: Failed to install {{ .name }}" && exit 1)
               {{- end }}
-              echo "==> All plugins installed successfully to /opt/plugins"
-          volumeMounts:
-            - name: plugins
-              mountPath: /opt/plugins
+              echo "==> ✓ All plugins installed successfully!"
+              
+              echo "==> Configuring plugins (creating writable copy)..."
+              cp /opt/nautobot/nautobot_config.py /tmp/nautobot_config.py
+              cat >> /tmp/nautobot_config.py << 'PLUGIN_EOF'
+              
+              # Plugins - Dynamically configured after runtime installation
+              PLUGINS = [
+              {{- range .Values.nautobot.plugins.packages }}
+                  "{{ .module }}",
+              {{- end }}
+              ]
+              
+              PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
+              PLUGIN_EOF
+              
+              export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
+              echo "==> ✓ Plugins configured!"
+              echo "==> Starting Celery beat..."
+              exec nautobot-server celery beat -l {{ .Values.nautobot.logLevel }}
+          {{- else }}
+          command:
+            - nautobot-server
+          args:
+            - celery
+            - beat
+            - -l
+            - {{ .Values.nautobot.logLevel }}
+          {{- end }}
           env:
             {{- include "nautobot.env" . | nindent 12 }}
-      {{- end }}
-      containers:
-        - name: nautobot-scheduler
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["nautobot-server", "celery", "beat", "-l", "{{ .Values.nautobot.logLevel }}"]
-          env:
-            {{- include "nautobot.env" . | nindent 12 }}
-            - name: PYTHONPATH
-              value: "/opt/plugins"
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
           volumeMounts:
@@ -77,8 +85,6 @@ spec:
               subPath: nautobot_config.py
             - name: media
               mountPath: /opt/nautobot/media
-            - name: plugins
-              mountPath: /opt/plugins
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
       volumes:

@@ -1,0 +1,148 @@
+# values.yaml template generated from Ansible group_vars
+# Auto-generated - DO NOT EDIT MANUALLY
+
+image:
+  repository: networktocode/nautobot
+  tag: "{{ nautobot_version }}"
+  pullPolicy: IfNotPresent
+
+nautobot:
+  secretKey: "{{ nautobot_secret_key }}"
+  allowedHosts:
+{{ nautobot_allowed_hosts | to_nice_yaml(indent=2) | indent(4, first=True) }}
+  debug: {{ nautobot_debug | default(false) | lower }}
+  logLevel: {{ nautobot_log_level | default('INFO') }}
+  
+  plugins:
+    enabled: {{ (nautobot_git_packages | length > 0) | lower }}
+    packages:
+{{ nautobot_git_packages | to_nice_yaml(indent=2) | indent(6, first=True) }}
+    config:
+{{ nautobot_plugins_config | to_nice_yaml(indent=2) | indent(6, first=True) }}
+  
+  createSuperuser:
+    enabled: true
+    username: "{{ nautobot_admin_username }}"
+    email: "{{ nautobot_admin_email }}"
+    password: "{{ nautobot_admin_password }}"
+
+database:
+  host: "{{ nautobot_db.host }}"
+  port: {{ nautobot_db.port }}
+  name: "{{ nautobot_db.name }}"
+  user: "{{ nautobot_db.user }}"
+  password: "{{ nautobot_db.password }}"
+
+redis:
+  host: "{{ nautobot_redis.host }}"
+  port: {{ nautobot_redis.port }}
+  database: {{ nautobot_redis.database }}
+  password: "{{ nautobot_redis.password | default('') }}"
+
+celery:
+  brokerUrl: "{{ nautobot_celery_broker_url }}"
+  resultBackend: "{{ nautobot_celery_result_backend }}"
+
+web:
+  replicas: {% if target_env == 'prod' %}3{% else %}2{% endif %}
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8080
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 6
+  
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 10
+
+worker:
+  replicas: {% if target_env == 'prod' %}3{% else %}2{% endif %}
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+service:
+  type: LoadBalancer
+  port: 8000
+  targetPort: 8080
+{% if loadbalancer_ip is defined %}
+  loadBalancerIP: "{{ loadbalancer_ip }}"
+{% endif %}
+
+persistence:
+  enabled: true
+  storageClass: "{{ nautobot_storage_class | default('local-path') }}"
+  media:
+    size: 10Gi
+  static:
+    size: 2Gi
+  git:
+    size: 5Gi
+
+podSecurityContext:
+  runAsUser: 999
+  runAsNonRoot: true
+  fsGroup: 999
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+serviceAccount:
+  create: true
+  name: nautobot
+
+postgresql:
+  enabled: {% if nautobot_db.host == 'nautobot-postgresql' %}true{% else %}false{% endif %}
+
+  auth:
+    username: "{{ nautobot_db.user }}"
+    password: "{{ nautobot_db.password }}"
+    database: "{{ nautobot_db.name }}"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+redisComponent:
+  enabled: {% if nautobot_redis.host == 'nautobot-redis' %}true{% else %}false{% endif %}
+
+  auth:
+    enabled: {{ (nautobot_redis.password | default('') | length > 0) | lower }}

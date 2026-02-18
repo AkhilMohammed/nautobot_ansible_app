@@ -1,0 +1,176 @@
+{{- if .Values.nautobot.plugins.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nautobot-pre-install-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pre-install
+  annotations:
+    "helm.sh/hook": pre-upgrade,pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "nautobot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: pre-install
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "nautobot.serviceAccountName" . }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: plugin-installer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "============================================"
+              echo "  Nautobot Pre-Install Job"
+              echo "  Revision: {{ .Release.Revision }}"
+              echo "  Time: $(date)"
+              echo "============================================"
+              
+              echo ""
+              echo "==> Step 1: Installing Git & System Dependencies..."
+              if ! command -v git >/dev/null 2>&1; then
+                apt-get update -qq > /dev/null 2>&1
+                apt-get install -y -qq git > /dev/null 2>&1
+                echo "✓ Git installed"
+              else
+                echo "✓ Git already installed"
+              fi
+              
+              {{- if .Values.nautobot.plugins.packages }}
+              echo ""
+              echo "==> Step 2: Installing {{ len .Values.nautobot.plugins.packages }} Plugin(s) from Git..."
+              {{- range $index, $plugin := .Values.nautobot.plugins.packages }}
+              echo "  [{{ add $index 1 }}/{{ len $.Values.nautobot.plugins.packages }}] Installing: {{ $plugin.name }}"
+              if pip install --no-cache-dir "{{ $plugin.name }}" > /tmp/pip-install-{{ $index }}.log 2>&1; then
+                echo "  ✓ {{ $plugin.module }} installed successfully"
+              else
+                echo "  ✗ ERROR: Failed to install {{ $plugin.name }}"
+                cat /tmp/pip-install-{{ $index }}.log
+                exit 1
+              fi
+              {{- end }}
+              echo "✓ All plugins installed successfully!"
+              {{- end }}
+              
+              echo ""
+              echo "==> Step 3: Configuring Plugins..."
+              cp /opt/nautobot/nautobot_config.py /tmp/nautobot_config.py
+              cat >> /tmp/nautobot_config.py << 'PLUGIN_EOF'
+
+# ============================================
+# Plugins - Auto-configured by Helm
+# ============================================
+PLUGINS = [
+{{- range .Values.nautobot.plugins.packages }}
+    "{{ .module }}",
+{{- end }}
+]
+
+PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
+PLUGIN_EOF
+              
+              export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
+              echo "✓ Plugins configured"
+              
+              echo ""
+              echo "==> Step 4: Running Database Migrations..."
+              if nautobot-server migrate --no-input; then
+                echo "✓ Migrations completed successfully"
+              else
+                echo "✗ ERROR: Migrations failed"
+                exit 1
+              fi
+              
+              echo ""
+              echo "==> Step 5: Collecting Static Files..."
+              if nautobot-server collectstatic --no-input --clear > /tmp/collectstatic.log 2>&1; then
+                STATIC_COUNT=$(grep -oP '\d+(?= static files)' /tmp/collectstatic.log || echo "unknown")
+                echo "✓ Collected $STATIC_COUNT static files"
+              else
+                echo "✗ ERROR: Static file collection failed"
+                cat /tmp/collectstatic.log
+                exit 1
+              fi
+              
+              {{- if .Values.nautobot.createSuperuser.enabled }}
+              echo ""
+              echo "==> Step 6: Creating Superuser (if not exists)..."
+              python3 << 'PYEOF'
+import os
+import django
+os.environ.setdefault('NAUTOBOT_CONFIG', '/tmp/nautobot_config.py')
+django.setup()
+from django.contrib.auth import get_user_model
+User = get_user_model()
+username = os.environ.get('NAUTOBOT_ADMIN_USERNAME', 'admin')
+if not User.objects.filter(username=username).exists():
+    User.objects.create_superuser(
+        username=username,
+        email=os.environ.get('NAUTOBOT_ADMIN_EMAIL', 'admin@example.com'),
+        password=os.environ.get('NAUTOBOT_ADMIN_PASSWORD', 'admin')
+    )
+    print(f"✓ Superuser '{username}' created")
+else:
+    print(f"✓ Superuser '{username}' already exists")
+PYEOF
+              {{- end }}
+              
+              echo ""
+              echo "============================================"
+              echo "  Pre-Install Job Completed Successfully!"
+              echo "  All plugins ready for deployment"
+              echo "============================================"
+          env:
+            {{- include "nautobot.env" . | nindent 12 }}
+            {{- if .Values.nautobot.createSuperuser.enabled }}
+            - name: NAUTOBOT_ADMIN_USERNAME
+              value: {{ .Values.nautobot.createSuperuser.username | quote }}
+            - name: NAUTOBOT_ADMIN_EMAIL
+              value: {{ .Values.nautobot.createSuperuser.email | quote }}
+            - name: NAUTOBOT_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nautobot.fullname" . }}-secrets
+                  key: admin-password
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /opt/nautobot/nautobot_config.py
+              subPath: nautobot_config.py
+            - name: static
+              mountPath: /opt/nautobot/static
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: nautobot-config
+        - name: static
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.static.existingClaim | default "nautobot-static" }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

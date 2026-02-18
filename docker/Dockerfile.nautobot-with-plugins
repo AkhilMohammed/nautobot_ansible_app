@@ -1,0 +1,26 @@
+FROM networktocode/nautobot:3.0.6-py3.11
+
+# Install Git (needed for Git URLs)
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Switch back to nautobot user
+USER 999
+
+# Install plugins from Git repos (just like Azure VMs!)
+RUN pip install --no-cache-dir \
+    git+https://github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt && \
+    pip install --no-cache-dir \
+    git+https://github.com/nautobot/nautobot-app-dns-models.git@develop#egg=nautobot-dns-models && \
+    pip install --no-cache-dir \
+    git+https://github.com/nautobot/nautobot-app-bgp-models.git@develop#egg=nautobot-bgp-models && \
+    pip install --no-cache-dir \
+    git+https://github.com/nautobot/nautobot-app-firewall-models.git@develop#egg=nautobot-firewall-models
+
+# Verify installations
+RUN pip list | grep nautobot
+
+# No need to change entrypoint - plugins are now part of the image

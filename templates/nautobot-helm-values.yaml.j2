@@ -88,6 +88,19 @@ web:
     limits:
       cpu: 2000m
       memory: 2Gi
+{% if nautobot_git_packages is defined and nautobot_git_packages | length > 0 %}
+  # Extended delays for Git plugin installation (5-8 min)
+  livenessProbe:
+    initialDelaySeconds: 600
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 480
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+{% endif %}
 
 # Worker Configuration
 worker:
@@ -99,6 +112,13 @@ worker:
     limits:
       cpu: 2000m
       memory: 2Gi
+{% if nautobot_git_packages is defined and nautobot_git_packages | length > 0 %}
+  # Extended delays for Git plugin installation
+  livenessProbe:
+    initialDelaySeconds: 600
+  readinessProbe:
+    initialDelaySeconds: 480
+{% endif %}
 
 # Scheduler Configuration
 scheduler:
@@ -110,6 +130,13 @@ scheduler:
     limits:
       cpu: 1000m
       memory: 1Gi
+{% if nautobot_git_packages is defined and nautobot_git_packages | length > 0 %}
+  # Extended delays for Git plugin installation
+  livenessProbe:
+    initialDelaySeconds: 600
+  readinessProbe:
+    initialDelaySeconds: 480
+{% endif %}
 
 # Service Configuration
 service:

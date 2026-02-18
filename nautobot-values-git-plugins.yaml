@@ -1,0 +1,59 @@
+# Nautobot Helm Values - Stable baseline configuration
+nautobot:
+  secretKey: "12rva+@-bi(#s)18^e3y22*4oki2um5o(^qwwyd=iyi95(4)"
+  superuserUsername: "admin"
+  superuserPassword: "admin"
+  superuserEmail: "admin@example.com"
+  
+  # Disable plugins for now - get stable baseline first
+  plugins:
+    enabled: false
+    packages: []
+    config: {}
+
+# Database Configuration
+database:
+  host: nautobot-postgresql
+  port: 5432
+  name: nautobot
+  password: "Akhil@0387"
+
+# Redis Configuration
+redis:
+  host: nautobot-redis
+  port: 6379
+  password: "Akhil@0387"
+
+# Web Configuration
+web:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# Worker Configuration
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# Disable init containers for plugin installation
+initContainers:
+  enabled: false
+  migrations:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi

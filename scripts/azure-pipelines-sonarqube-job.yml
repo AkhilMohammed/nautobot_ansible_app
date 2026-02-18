@@ -1,0 +1,101 @@
+# ============================================================
+# Add this job to your azure-pipelines.yml Build stage
+# ============================================================
+# Insert after the "Validate" job and before the "Package" job
+# ============================================================
+
+- job: CodeQuality
+  displayName: 'SonarQube Code Quality Analysis'
+  dependsOn: Validate
+  condition: succeeded()
+  steps:
+    - bash: |
+        set -e
+        echo "======================================"
+        echo "Installing SonarQube Scanner"
+        echo "======================================"
+        
+        SCANNER_VERSION="5.0.1.3006"
+        SCANNER_DIR="sonar-scanner-${SCANNER_VERSION}-linux"
+        
+        cd /tmp
+        if [ ! -d "$SCANNER_DIR" ]; then
+          wget -q "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+          unzip -q "sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+          rm "sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+        fi
+        
+        export PATH="/tmp/${SCANNER_DIR}/bin:$PATH"
+        sonar-scanner --version
+        
+        echo "======================================"
+        echo "Running SonarQube Analysis"
+        echo "======================================"
+        
+        cd $(Build.SourcesDirectory)
+        
+        # Run SonarQube scanner
+        sonar-scanner \
+          -Dsonar.host.url=http://172.17.152.204:9000 \
+          -Dsonar.token=$(SONARQUBE_TOKEN) \
+          -Dsonar.projectKey=nautobot-ansible-app \
+          -Dsonar.projectName="Nautobot Ansible Application" \
+          -Dsonar.projectVersion=$(Build.BuildNumber) \
+          -Dsonar.sources=playbooks,roles,group_vars,host_vars,scripts \
+          -Dsonar.exclusions="**/*.pyc,**/__pycache__/**,**/node_modules/**,**/.terraform/**,**/venv/**,**/vault.yml" \
+          -Dsonar.python.version=3.11 \
+          -Dsonar.yaml.file.suffixes=.yml,.yaml \
+          -Dsonar.sourceEncoding=UTF-8 \
+          -Dsonar.working.directory=$(Build.SourcesDirectory)/.scannerwork
+        
+        echo ""
+        echo "======================================"
+        echo "SonarQube Analysis Complete!"
+        echo "======================================"
+        echo "View results at: http://172.17.152.204:9000/dashboard?id=nautobot-ansible-app"
+        echo ""
+      displayName: 'Run SonarQube Scan'
+      env:
+        SONARQUBE_TOKEN: $(SONARQUBE_TOKEN)
+      continueOnError: true  # Don't fail pipeline initially while fixing issues
+
+    # OPTIONAL: Uncomment to enforce quality gate
+    # - bash: |
+    #     echo "======================================"
+    #     echo "Checking Quality Gate Status"
+    #     echo "======================================"
+    #     
+    #     # Wait for processing
+    #     sleep 10
+    #     
+    #     # Check quality gate
+    #     QUALITY_GATE=$(curl -s -u "$(SONARQUBE_TOKEN):" \
+    #       "http://172.17.152.204:9000/api/qualitygates/project_status?projectKey=nautobot-ansible-app" \
+    #       | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    #     
+    #     echo "Quality Gate Status: $QUALITY_GATE"
+    #     
+    #     if [ "$QUALITY_GATE" = "ERROR" ]; then
+    #       echo "✗ Quality gate failed! Fix issues before merging."
+    #       exit 1
+    #     elif [ "$QUALITY_GATE" = "OK" ]; then
+    #       echo "✓ Quality gate passed!"
+    #     else
+    #       echo "⚠ Quality gate status: $QUALITY_GATE"
+    #     fi
+    #   displayName: 'Check Quality Gate'
+    #   env:
+    #     SONARQUBE_TOKEN: $(SONARQUBE_TOKEN)
+    #   condition: succeededOrFailed()
+
+# ============================================================
+# Then update the Package job dependencies:
+# ============================================================
+- job: Package
+  displayName: 'Package Application'
+  dependsOn: 
+    - Validate
+    - CodeQuality  # Add this line
+  condition: succeeded()
+  steps:
+    # ... rest of Package job ...

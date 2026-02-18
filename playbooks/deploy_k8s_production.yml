@@ -2240,7 +2240,7 @@
         --atomic
         --cleanup-on-fail
         --wait
-        --timeout=15m
+        --timeout=20m
       register: helm_deploy
       retries: 2
       delay: 30
@@ -2251,7 +2251,7 @@
         kubectl wait --namespace nautobot
         --for=condition=ready pod
         --selector=app.kubernetes.io/name=nautobot
-        --timeout=600s
+        --timeout=1200s
       changed_when: false
 
     - name: Get all pods status

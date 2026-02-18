@@ -1,0 +1,309 @@
+name: Deploy Nautobot to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'group_vars/**/*.yml'
+      - 'helm/nautobot/**'
+      - 'roles/k8s_nautobot/**'
+      - '.github/workflows/deploy-k8s.yml'
+  
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      skip_tests:
+        description: 'Skip validation tests'
+        type: boolean
+        default: false
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      target_env: ${{ steps.detect-env.outputs.env }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible kubernetes pyyaml jinja2
+          ansible-galaxy collection install kubernetes.core
+
+      - name: Detect target environment
+        id: detect-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "env=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "env=dev" >> $GITHUB_OUTPUT
+          else
+            echo "env=test" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate Ansible syntax
+        run: |
+          ansible-playbook --syntax-check \
+            playbooks/deploy_k8s_production.yml
+
+      - name: Validate group_vars YAMLYAML
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import sys
+          from pathlib import Path
+          
+          env = "${{ steps.detect-env.outputs.env }}"
+          vars_file = Path(f"group_vars/{env}/nautobot.yml")
+          
+          if not vars_file.exists():
+              print(f"ERROR: {vars_file} not found")
+              sys.exit(1)
+          
+          try:
+              with open(vars_file) as f:
+                  data = yaml.safe_load(f)
+              
+              # Validate required fields
+              required = ['nautobot_version', 'nautobot_git_packages']
+              missing = [k for k in required if k not in data]
+              if missing:
+                  print(f"ERROR: Missing required fields: {missing}")
+                  sys.exit(1)
+              
+              # Validate plugin structure
+              for pkg in data.get('nautobot_git_packages', []):
+                  if 'name' not in pkg or 'module_name' not in pkg:
+                      print(f"ERROR: Invalid plugin: {pkg}")
+                      sys.exit(1)
+              
+              print(f"✓ Validated {len(data.get('nautobot_git_packages', []))} plugins")
+              print(f"✓ Nautobot version: {data.get('nautobot_version')}")
+          except Exception as e:
+              print(f"ERROR: {e}")
+              sys.exit(1)
+          EOF
+
+      - name: Lint Helm chart
+        run: |
+          helm lint helm/nautobot/
+
+  deploy-dev:
+    name: Deploy to Development
+    needs: validate
+    if: needs.validate.outputs.target_env == 'dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: http://${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible & dependencies
+        run: |
+          pip install ansible kubernetes
+          ansible-galaxy collection install kubernetes.core
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.K8S_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.K8S_MASTER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Setup vault password
+        run: |
+          if [ -z "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" ]; then
+            echo "❌ ERROR: ANSIBLE_VAULT_PASSWORD secret is not set or is empty"
+            echo "Please configure it in: Repository Settings → Secrets → Actions"
+            exit 1
+          fi
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+          chmod 600 vault_pass.txt
+          if [ ! -f vault_pass.txt ]; then
+            echo "❌ ERROR: vault_pass.txt was not created"
+            exit 1
+          fi
+          echo "✅ Vault password file created successfully"
+          wc -c vault_pass.txt | awk '{print "File size: " $1 " bytes"}'
+
+      - name: Run Ansible deployment
+        id: deploy
+        run: |
+          ansible-playbook \
+            -i inventory/k8s/onprem.yml \
+            playbooks/deploy_k8s_production.yml \
+            --vault-password-file vault_pass.txt \
+            -e "target_env=dev" \
+            -e "kubernetes_version=${{ secrets.K8S_VERSION || '1.28.15' }}" \
+            --limit onprem-k8s-master \
+            -v
+
+      - name: Get deployment URL
+        id: get-url
+        run: |
+          # Extract URL from deployment output
+          URL=$(kubectl get svc nautobot -n nautobot -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "url=$URL:8000" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Run smoke tests
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          MAX_RETRIES=30
+          RETRY_DELAY=10
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            if curl -f -s -o /dev/null "http://${{ steps.get-url.outputs.url }}/health/"; then
+              echo "✓ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/$MAX_RETRIES failed, retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
+          
+          echo "ERROR: Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Development" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** http://${{ steps.get-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: validate
+    if: needs.validate.outputs.target_env == 'prod'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Require manual approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ secrets.PROD_APPROVERS }}
+          minimum-approvals: 2
+          issue-title: "Deploy Nautobot to Production"
+          issue-body: |
+            **Deployment Request**
+            
+            Requesting approval to deploy Nautobot to production.
+            
+            **Changes:**
+            ${{ github.event.head_commit.message }}
+            
+            **Modified files:**
+            ```
+            ${{ join(github.event.commits.*.modified, '\n') }}
+            ```
+            
+            Please review and approve/deny this deployment.
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible & dependencies
+        run: |
+          pip install ansible kubernetes
+          ansible-galaxy collection install kubernetes.core
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.K8S_PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.K8S_PROD_MASTER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Setup vault password
+        run: |
+          if [ -z "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" ]; then
+            echo "❌ ERROR: ANSIBLE_VAULT_PASSWORD secret is not set or is empty"
+            echo "Please configure it in: Repository Settings → Secrets → Actions"
+            exit 1
+          fi
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+          chmod 600 vault_pass.txt
+          if [ ! -f vault_pass.txt ]; then
+            echo "❌ ERROR: vault_pass.txt was not created"
+            exit 1
+          fi
+          echo "✅ Vault password file created successfully"
+          wc -c vault_pass.txt | awk '{print "File size: " $1 " bytes"}'
+
+      - name: Run Ansible deployment
+        id: deploy
+        run: |
+          ansible-playbook \
+            -i inventory/k8s/prod.yml \
+            playbooks/deploy_k8s_production.yml \
+            --vault-password-file vault_pass.txt \
+            -e "target_env=prod" \
+            --limit prod-k8s-master \
+            -v
+
+      - name: Run production validation tests
+        run: |
+          # Add your production validation tests here
+          ./scripts/validate-production.sh
+
+      - name: Create deployment tag
+        if: success()
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          TAG="prod-$(date +%Y%m%d-%H%M%S)"
+          git tag -a "$TAG" -m "Production deployment: ${{ github.sha }}"
+          git push origin "$TAG"

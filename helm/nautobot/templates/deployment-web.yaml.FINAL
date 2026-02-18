@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "nautobot.labels" . | nindent 4 }}
-    app.kubernetes.io/component: web
+    app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.web.replicas }}
   strategy:
@@ -16,12 +16,12 @@ spec:
   selector:
     matchLabels:
       {{- include "nautobot.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: web
+      app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
         {{- include "nautobot.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: web
+        app.kubernetes.io/component: worker
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
@@ -67,12 +67,6 @@ spec:
               
               export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
               echo "==> ✓ Plugins configured!"
-              echo "==> Running migrations..."
-              nautobot-server migrate --no-input
-              echo "==> ✓ Migrations complete!"
-              echo "==> Collecting static files..."
-              nautobot-server collectstatic --no-input --clear
-              echo "==> ✓ Static files collected!"
               echo "==> Starting Nautobot web..."
               exec nautobot-server start --ini /opt/nautobot/uwsgi.ini
           {{- else }}
@@ -87,27 +81,6 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-          env:
-          {{- if .Values.web.livenessProbe.enabled }}
-          livenessProbe:
-            httpGet:
-              path: {{ .Values.web.livenessProbe.httpGet.path }}
-              port: {{ .Values.web.livenessProbe.httpGet.port }}
-            initialDelaySeconds: {{ .Values.web.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.web.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.web.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.web.livenessProbe.failureThreshold }}
-          {{- end }}
-          {{- if .Values.web.readinessProbe.enabled }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.web.readinessProbe.httpGet.path }}
-              port: {{ .Values.web.readinessProbe.httpGet.port }}
-            initialDelaySeconds: {{ .Values.web.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.web.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.web.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.web.readinessProbe.failureThreshold }}
-          {{- end }}
           env:
             {{- include "nautobot.env" . | nindent 12 }}
           resources:

@@ -103,15 +103,11 @@ data:
     # Metrics
     METRICS_ENABLED = {{ if .Values.nautobot.metricsEnabled }}True{{ else }}False{{ end }}
     
-    # Plugins
-    {{- if .Values.nautobot.plugins.enabled }}
-    PLUGINS = [
-      {{- range .Values.nautobot.plugins.packages }}
-      "{{ .module }}",
-      {{- end }}
-    ]
-    
-    PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
+    # Plugins - Will be configured dynamically after runtime installation
+    # Do not set PLUGINS here as they're installed at container startup
+    {{- if not .Values.nautobot.plugins.enabled }}
+    PLUGINS = []
+    PLUGINS_CONFIG = {}
     {{- end }}
     
     # Session and CSRF

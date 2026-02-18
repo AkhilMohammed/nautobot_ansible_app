@@ -1,0 +1,155 @@
+# Nautobot Helm Values - Runtime Plugin Installation
+# For development: Add/remove plugins without rebuilding images
+
+image:
+  repository: networktocode/nautobot
+  tag: "3.0.6-py3.11"
+  pullPolicy: IfNotPresent
+
+# Disable init containers - install in main container
+initContainers:
+  enabled: false
+
+nautobot:
+  secretKey: "12rva+@-bi(#s)18^e3y22*4oki2um5o(^qwwyd=iyi95(4)"
+  debug: false
+  logLevel: INFO
+  allowedHosts:
+    - "*"
+  
+  # Enable runtime plugin installation
+  plugins:
+    enabled: true
+    packages:
+      # Just add/remove plugins here and redeploy!
+      - name: "git+https://github.com/nautobot/nautobot-app-device-lifecycle-mgmt.git@develop#egg=nautobot-device-lifecycle-mgmt"
+        module: "nautobot_device_lifecycle_mgmt"
+      - name: "git+https://github.com/nautobot/nautobot-app-dns-models.git@develop#egg=nautobot-dns-models"
+        module: "nautobot_dns_models"
+      - name: "git+https://github.com/nautobot/nautobot-app-bgp-models.git@develop#egg=nautobot-bgp-models"
+        module: "nautobot_bgp_models"
+      - name: "git+https://github.com/nautobot/nautobot-app-firewall-models.git@develop#egg=nautobot-firewall-models"
+        module: "nautobot_firewall_models"
+      # Add your custom plugins here:
+      # - name: "git+https://github.com/yourorg/your-plugin.git@main#egg=your-plugin"
+      #   module: "your_plugin"
+    
+    config:
+      nautobot_device_lifecycle_mgmt: {}
+      nautobot_dns_models: {}
+      nautobot_bgp_models: {}
+      nautobot_firewall_models: {}
+
+database:
+  host: nautobot-postgresql
+  port: 5432
+  name: nautobot
+  user: nautobot
+  password: "nautobot_db_password_change_me"
+
+redis:
+  host: nautobot-redis
+  port: 6379
+  database: 0
+  password: ""
+
+celery:
+  brokerUrl: "redis://nautobot-redis:6379/0"
+  resultBackend: "redis://nautobot-redis:6379/1"
+
+# IMPORTANT: Increase delays for plugin installation time
+web:
+  replicas: 2
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 600  # 10 minutes - wait for plugin install
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 6
+    httpGet:
+      path: /health/
+      port: 8080
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 480  # 8 minutes - wait for plugin install
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 10
+    httpGet:
+      path: /health/
+      port: 8080
+
+worker:
+  replicas: 2
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+postgresql:
+  enabled: true
+  auth:
+    username: nautobot
+    password: "nautobot_db_password_change_me"
+    database: nautobot
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+redisComponent:
+  enabled: true
+  auth:
+    enabled: false
+
+service:
+  type: LoadBalancer
+  port: 8000
+  targetPort: 8080
+  loadBalancerIP: 172.17.152.200
+
+persistence:
+  enabled: true
+  storageClass: "local-path"
+  media:
+    size: 10Gi
+  static:
+    size: 2Gi
+  git:
+    size: 5Gi
+
+serviceAccount:
+  create: true
+  name: nautobot
+
+podSecurityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false

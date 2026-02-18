@@ -67,12 +67,41 @@ kubectl get pods -n nautobot -w
 | **Nautobot** | http://172.17.152.200:8000 | admin/[vault] |
 | **Grafana** | http://172.17.152.202 | admin/[secret] |
 | **Prometheus** | http://172.17.152.203:9090 | - |
-| **SonarQube** | http://172.17.152.204:9000 | admin/admin |
+| **SonarQube** | http://172.17.152.204:9000 | admin/admin* |
+
+*Change password on first login
 
 Get Grafana password:
 ```bash
 kubectl get secret -n monitoring prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
 ```
+
+---
+
+## 🔬 Code Quality Analysis (SonarQube)
+
+### Run Local Scan
+```bash
+# Quick scan
+./scripts/run_sonarqube_scan.sh
+
+# With authentication token
+export SONARQUBE_TOKEN='your-token-here'
+./scripts/run_sonarqube_scan.sh
+```
+
+### View Results
+```bash
+firefox http://172.17.152.204:9000/dashboard?id=nautobot-ansible-app
+```
+
+### First-Time Setup
+1. Login to SonarQube: http://172.17.152.204:9000
+2. Change default password (admin/admin)
+3. Generate token: My Account → Security → Generate Token
+4. Add token to Azure DevOps variable group: `SONARQUBE_TOKEN`
+
+**See full guide**: [docs/SONARQUBE_INTEGRATION.md](docs/SONARQUBE_INTEGRATION.md)
 
 ---
 
