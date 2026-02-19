@@ -181,7 +181,6 @@ jobs:
               --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt \
               -e 'target_env=dev' \
               -e 'kubernetes_version=${{ secrets.K8S_VERSION || '1.28.15' }}' \
-              --limit onprem-k8s-master \
               -v"
 
       - name: Get deployment URL
