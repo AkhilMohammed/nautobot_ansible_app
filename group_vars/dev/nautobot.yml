@@ -124,9 +124,15 @@ nautobot_git_packages:
 
 
 
+
   # Pipeline trigger: force CI run
   # Pipeline trigger: dummy change for CI
   # Firewall Models plugin (dev) - Testing automated deployment
+
+  # Dummy plugin for CI/CD pipeline trigger test
+  - name: "git+https://github.com/example/dummy-plugin.git@main#egg=dummy-plugin"
+    version: "main"
+    module_name: "dummy_plugin"
 
   # Blocklist legacy/incompatible plugins that may be injected via vault
   nautobot_git_packages_blocklist:
