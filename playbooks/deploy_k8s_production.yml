@@ -1155,15 +1155,17 @@
       delay: 10
       changed_when: false
 
-    - name: Generate join command for workers
+    - name: Generate fresh join command for workers
       ansible.builtin.command: kubeadm token create --print-join-command
       register: join_command
       changed_when: false
+      retries: 5
+      delay: 5
+      until: join_command.rc == 0
 
     - name: Save join command as fact
       ansible.builtin.set_fact:
         k8s_join_command: "{{ join_command.stdout }}"
-      cacheable: true
 
     - name: Create cluster-info directory for disaster recovery
       ansible.builtin.file:
@@ -1277,19 +1279,19 @@
       delay: 10
       when: api_check.failed or (apiserver_pod.rc != 0) or (apiserver_pod.stdout != 'Running')
 
- - name: Join worker nodes to cluster
-   hosts: k8s_workers
-   become: true
-   gather_facts: false
-   serial: 1
+- name: Join worker nodes to cluster
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+  serial: 1
 
-   pre_tasks:
-     - name: Fetch join command from control plane if not present
-       ansible.builtin.set_fact:
-         k8s_join_command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
-       when: k8s_join_command is not defined
+  pre_tasks:
+    - name: Fetch join command from control plane if not present
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+      when: k8s_join_command is not defined
 
-   tasks:
+  tasks:
     - name: Ensure chrony is running on worker before join
       ansible.builtin.service:
         name: chrony
@@ -1512,7 +1514,8 @@
         sleep 1
       ignore_errors: yes
 
-    - name: Join worker node to cluster with preflight bypass
+
+    - name: Try kubeadm join (with preflight bypass)
       ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --ignore-preflight-errors=FileAvailable--etc-kubernetes-kubelet.conf,FileAvailable--etc-kubernetes-pki-ca.crt,Port-10250"
       register: join_result
       retries: 3
@@ -1521,6 +1524,28 @@
       when: (node_registered is not defined) or (node_registered.rc != 0)
       async: 600
       poll: 15
+      ignore_errors: yes
+
+    - name: Reset node and retry join if config.yaml is missing
+      block:
+        - name: Check for kubelet config.yaml
+          ansible.builtin.stat:
+            path: /var/lib/kubelet/config.yaml
+          register: kubelet_config_check
+
+        - name: Reset node if config.yaml is missing
+          ansible.builtin.command: kubeadm reset -f --cleanup-tmp-dir
+          when: not kubelet_config_check.stat.exists
+          ignore_errors: yes
+
+        - name: Retry kubeadm join if config.yaml is missing
+          ansible.builtin.shell: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }} --ignore-preflight-errors=FileAvailable--etc-kubernetes-kubelet.conf,FileAvailable--etc-kubernetes-pki-ca.crt,Port-10250"
+          when: not kubelet_config_check.stat.exists
+          register: join_result_retry
+          retries: 2
+          delay: 15
+          until: join_result_retry.rc == 0
+          ignore_errors: yes
 
     - name: Display join result
       ansible.builtin.debug:
@@ -2116,7 +2141,7 @@
         KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
       register: ingress_pods
       changed_when: false
-      when: ingress_install_result is defined and ingress_install_result.rc != 0
+      when: ingress_install_result is defined and ingress_install_result.rc is defined and ingress_install_result.rc != 0
 
     - name: Display Ingress pods status
       ansible.builtin.debug:
