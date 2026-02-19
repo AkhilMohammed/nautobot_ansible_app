@@ -135,12 +135,11 @@ nautobot_git_packages:
     module_name: "dummy_plugin"
 
   # Blocklist legacy/incompatible plugins that may be injected via vault
-  nautobot_git_packages_blocklist: []
-    - "nautobot_plugin_example"
+nautobot_git_packages_blocklist:
+  - "nautobot_plugin_example"
 
-    # Pipeline trigger: another dummy change for CI
 # Pipeline trigger: unique dummy change 2026-02-18-1
-  # Pipeline trigger: unique dummy change 2026-02-18-2
+# Pipeline trigger: unique dummy change 2026-02-18-2
 nautobot_git_packages_blocklist_regex: "nautobot-plugin-device-tracker|nautobot-plugin-example"
 
 # Plugin Configuration
