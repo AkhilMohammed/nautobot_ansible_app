@@ -175,11 +175,10 @@ jobs:
         id: deploy
         run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@${{ secrets.K8S_MASTER_IP }} "\
-            cd ~/nautobot_ansible_app && \
             ansible-playbook \
-              -i inventory/k8s/onprem.yml \
-              playbooks/deploy_k8s_production.yml \
-              --vault-password-file vault_pass.txt \
+              -i /home/ubuntu/nautobot_ansible_app/inventory/k8s/onprem.yml \
+              /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml \
+              --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt \
               -e 'target_env=dev' \
               -e 'kubernetes_version=${{ secrets.K8S_VERSION || '1.28.15' }}' \
               --limit onprem-k8s-master \
