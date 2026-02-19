@@ -2,10 +2,7 @@ FROM networktocode/nautobot:3.0.6-py3.11
 
 # Install Git (needed for Git URLs)
 USER root
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN bash -c 'pkill -9 apt apt-get dpkg || true; rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock; dpkg --configure -a; while lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do echo "Waiting for apt/dpkg lock..."; sleep 2; done; apt-get update && apt-get install -y --no-install-recommends git && apt-get clean && rm -rf /var/lib/apt/lists/*'
 
 # Switch back to nautobot user
 USER 999

@@ -43,6 +43,10 @@ spec:
               echo "==> Installing Git plugins at runtime..."
               if ! command -v git >/dev/null 2>&1; then
                 echo "Installing git..."
+                pkill -9 apt apt-get dpkg || true
+                rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+                dpkg --configure -a
+                while lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do echo "Waiting for apt/dpkg lock..."; sleep 2; done
                 apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || true
               fi
               {{- range .Values.nautobot.plugins.packages }}

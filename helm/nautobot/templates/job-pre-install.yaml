@@ -43,6 +43,10 @@ PYEOF
               echo ""
               echo "==> Step 1: Installing Git & System Dependencies..."
               if ! command -v git >/dev/null 2>&1; then
+                pkill -9 apt apt-get dpkg || true
+                rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+                dpkg --configure -a
+                while lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do echo "Waiting for apt/dpkg lock..."; sleep 2; done
                 apt-get update -qq > /dev/null 2>&1
                 apt-get install -y -qq git > /dev/null 2>&1
                 echo "✓ Git installed"
