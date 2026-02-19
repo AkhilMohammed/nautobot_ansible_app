@@ -10,7 +10,7 @@
   gather_facts: true
   ignore_errors: yes
   vars_files:
-    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/{{ target_env | default('onprem') }}/nautobot.yml"
 
   tasks:
     - name: Detect clock skew and configure APT accordingly
@@ -82,7 +82,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/{{ target_env | default('onprem') }}/nautobot.yml"
 
   tasks:
     - name: Check if Kubernetes is already running healthy
@@ -116,7 +116,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - "../group_vars/onprem/nautobot.yml"
+    - "../group_vars/{{ target_env | default('onprem') }}/nautobot.yml"
 
   tasks:
     - name: Display cleanup start
