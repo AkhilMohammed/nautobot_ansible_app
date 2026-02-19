@@ -2193,6 +2193,7 @@
         src: ../templates/nautobot-helm-values.yaml.j2
         dest: /home/{{ ansible_user }}/nautobot-values.yaml
         mode: '0644'
+      tags: [generate_helm_values]
 
     - name: Clean up manually created TLS resources (prevents Helm conflicts)
       ansible.builtin.shell: |
