@@ -160,17 +160,30 @@ jobs:
           echo "✅ Vault password file created successfully"
           wc -c vault_pass.txt | awk '{print "File size: " $1 " bytes"}'
 
-      - name: Run Ansible deployment
+      - name: Copy deployment files to master node
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa \
+            inventory/k8s/onprem.yml \
+            playbooks/deploy_k8s_production.yml \
+            vault_pass.txt \
+            -r group_vars \
+            -r roles \
+            -r helm/nautobot \
+            ubuntu@${{ secrets.K8S_MASTER_IP }}:~/nautobot_ansible_app/
+
+      - name: Run Ansible deployment on master node
         id: deploy
         run: |
-          ansible-playbook \
-            -i inventory/k8s/onprem.yml \
-            playbooks/deploy_k8s_production.yml \
-            --vault-password-file vault_pass.txt \
-            -e "target_env=dev" \
-            -e "kubernetes_version=${{ secrets.K8S_VERSION || '1.28.15' }}" \
-            --limit onprem-k8s-master \
-            -v
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@${{ secrets.K8S_MASTER_IP }} "\
+            cd ~/nautobot_ansible_app && \
+            ansible-playbook \
+              -i inventory/k8s/onprem.yml \
+              playbooks/deploy_k8s_production.yml \
+              --vault-password-file vault_pass.txt \
+              -e 'target_env=dev' \
+              -e 'kubernetes_version=${{ secrets.K8S_VERSION || '1.28.15' }}' \
+              --limit onprem-k8s-master \
+              -v"
 
       - name: Get deployment URL
         id: get-url
