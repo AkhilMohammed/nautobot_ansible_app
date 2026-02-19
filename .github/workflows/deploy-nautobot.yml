@@ -242,7 +242,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "mkdir -p /tmp/nautobot-deploy"
           scp -o StrictHostKeyChecking=no -r helm/nautobot ubuntu@$MASTER_IP:/tmp/nautobot-deploy/
           # Ensure Ansible is installed and available in PATH for non-interactive SSH
-          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "timeout=600; waited=0; while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do if [ $waited -ge $timeout ]; then echo 'ERROR: dpkg lock held for too long, aborting.'; exit 1; fi; echo 'Waiting for dpkg lock...'; sleep 5; waited=$((waited+5)); done; sudo apt-get update && sudo apt-get install -y ansible && echo 'export PATH=\"$PATH:/usr/bin:/usr/local/bin\"' >> ~/.bashrc"
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "sudo rm -f /var/lib/dpkg/lock-frontend; sudo dpkg --configure -a; sudo apt-get update && sudo apt-get install -y ansible && echo 'export PATH=\"$PATH:/usr/bin:/usr/local/bin\"' >> ~/.bashrc"
           # Confirm ansible-playbook is available
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "which ansible-playbook || (echo 'Ansible not found in PATH' && exit 1)"
           # Generate Helm values file from Ansible/group_vars and vault
