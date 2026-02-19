@@ -1611,7 +1611,7 @@
               - "{{ csr_status.stdout_lines }}"
               - "=== API SERVER LOAD ==="
               - "{{ api_load.stdout_lines if api_load.rc == 0 else 'Metrics not available' }}"
-      when: join_result is defined and join_result.rc != 0
+      when: join_result is defined and (join_result.rc is defined and join_result.rc != 0)
 
     - name: Wait for kubelet to be active on worker
       ansible.builtin.systemd:
