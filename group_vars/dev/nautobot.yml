@@ -115,10 +115,16 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_dns_models"
 
+
   # BGP Models plugin (dev)
   - name: "git+https://{{ git_auth_url_safe }}github.com/nautobot/nautobot-app-bgp-models.git@develop#egg=nautobot-bgp-models"
     version: "develop"
     module_name: "nautobot_bgp_models"
+
+  # Dummy Plugin for CI trigger (2026-02-19)
+  - name: "git+https://github.com/example/nautobot-app-dummy-plugin.git@main#egg=nautobot-dummy-plugin"
+    version: "main"
+    module_name: "nautobot_dummy_plugin"
 
 
 
