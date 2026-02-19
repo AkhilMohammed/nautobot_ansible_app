@@ -1163,6 +1163,7 @@
     - name: Save join command as fact
       ansible.builtin.set_fact:
         k8s_join_command: "{{ join_command.stdout }}"
+      cacheable: true
 
     - name: Create cluster-info directory for disaster recovery
       ansible.builtin.file:
@@ -1278,6 +1279,11 @@
 
 - name: Join worker nodes to cluster
   hosts: k8s_workers
+    pre_tasks:
+      - name: Fetch join command from control plane if not present
+        ansible.builtin.set_fact:
+          k8s_join_command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+        when: k8s_join_command is not defined
   become: true
   gather_facts: false
   serial: 1
