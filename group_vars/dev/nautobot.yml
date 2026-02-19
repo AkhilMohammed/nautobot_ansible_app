@@ -135,7 +135,7 @@ nautobot_git_packages:
     module_name: "dummy_plugin"
 
   # Blocklist legacy/incompatible plugins that may be injected via vault
-  nautobot_git_packages_blocklist:
+  nautobot_git_packages_blocklist: []
     - "nautobot_plugin_example"
 
     # Pipeline trigger: another dummy change for CI
