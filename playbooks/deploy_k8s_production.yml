@@ -2115,6 +2115,20 @@
         msg: "Ingress Controller {{ 'is ready' if ingress_wait_result.rc == 0 else 'may not be fully ready - check pods status' }}"
 
 - name: Deploy PostgreSQL and Redis on VMs
+  pre_tasks:
+    - name: Ensure python3-pip is installed (for docker SDK)
+      apt:
+        name: python3-pip
+        state: present
+      become: true
+      when: ansible_facts['os_family'] == 'Debian' and inventory_hostname == 'onprem-redis-01'
+
+    - name: Ensure Docker SDK for Python is installed
+      pip:
+        name: docker
+        executable: pip3
+      become: true
+      when: inventory_hostname == 'onprem-redis-01'
   hosts: postgres,redis
   become: true
   gather_facts: true
