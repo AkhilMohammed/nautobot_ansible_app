@@ -1,17 +1,22 @@
-  # Always fetch kubelet logs on failure for all nodes
-  - name: Fetch kubelet logs on failure
-    shell: journalctl -u kubelet --no-pager | tail -100
-    register: kubelet_logs
-    ignore_errors: true
-    changed_when: false
-    failed_when: false
-    when: ansible_failed_result is defined or (kubelet_status is defined and kubelet_status.failed | default(false))
+# ...existing code...
 
-  - name: Display kubelet logs on failure
-    debug:
-      var: kubelet_logs.stdout_lines
-    when: kubelet_logs is defined
----
+# Always fetch kubelet logs on failure for all nodes (run as a separate play at the end)
+- name: Always fetch kubelet logs on failure
+  hosts: k8s_control_plane,k8s_workers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Fetch kubelet logs on failure
+      shell: journalctl -u kubelet --no-pager | tail -100
+      register: kubelet_logs
+      ignore_errors: true
+      changed_when: false
+      failed_when: false
+
+    - name: Display kubelet logs on failure
+      debug:
+        var: kubelet_logs.stdout_lines
+      when: kubelet_logs is defined
 # Production-Ready Kubernetes Nautobot Deployment with Helm
 # Fully automated: Installs K8s, Helm, Ingress, and deploys Nautobot
 # Usage: ansible-playbook -i inventory/k8s/onprem.yml playbooks/deploy_k8s_production.yml --ask-vault-pass
