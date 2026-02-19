@@ -1277,18 +1277,19 @@
       delay: 10
       when: api_check.failed or (apiserver_pod.rc != 0) or (apiserver_pod.stdout != 'Running')
 
-- name: Join worker nodes to cluster
-  hosts: k8s_workers
-    pre_tasks:
-      - name: Fetch join command from control plane if not present
-        ansible.builtin.set_fact:
-          k8s_join_command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
-        when: k8s_join_command is not defined
-  become: true
-  gather_facts: false
-  serial: 1
+ - name: Join worker nodes to cluster
+   hosts: k8s_workers
+   become: true
+   gather_facts: false
+   serial: 1
 
-  tasks:
+   pre_tasks:
+     - name: Fetch join command from control plane if not present
+       ansible.builtin.set_fact:
+         k8s_join_command: "{{ hostvars[groups['k8s_control_plane'][0]]['k8s_join_command'] }}"
+       when: k8s_join_command is not defined
+
+   tasks:
     - name: Ensure chrony is running on worker before join
       ansible.builtin.service:
         name: chrony
