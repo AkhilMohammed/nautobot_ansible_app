@@ -121,10 +121,6 @@ nautobot_git_packages:
     version: "develop"
     module_name: "nautobot_bgp_models"
 
-  # Dummy Plugin for CI trigger (2026-02-19)
-  - name: "git+https://github.com/example/nautobot-app-dummy-plugin.git@main#egg=nautobot-dummy-plugin"
-    version: "main"
-    module_name: "nautobot_dummy_plugin"
 
 
 
