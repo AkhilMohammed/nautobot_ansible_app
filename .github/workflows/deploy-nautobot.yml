@@ -251,11 +251,16 @@ jobs:
               sleep 2; \
             done; \
             sudo apt-get update && sudo apt-get install -y ansible && echo 'export PATH=\"$PATH:/usr/bin:/usr/local/bin\"' >> ~/.bashrc"
+
+          # Copy inventory file to remote host
+          scp -o StrictHostKeyChecking=no inventory/k8s/onprem.yml ubuntu@$MASTER_IP:/tmp/nautobot-deploy/onprem.yml
+
           # Confirm ansible-playbook is available
           ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "which ansible-playbook || (echo 'Ansible not found in PATH' && exit 1)"
-          # Generate Helm values file from Ansible/group_vars and vault
-          # Use full path to ansible-playbook to avoid PATH issues
-          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "/usr/bin/ansible-playbook -i /home/ubuntu/nautobot_ansible_app/inventory/k8s/onprem.yml /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt --tags generate_helm_values --limit onprem-k8s-master"
+
+          # Generate Helm values file from Ansible/group_vars and vault using the copied inventory
+          ssh -o StrictHostKeyChecking=no ubuntu@$MASTER_IP "/usr/bin/ansible-playbook -i /tmp/nautobot-deploy/onprem.yml /home/ubuntu/nautobot_ansible_app/playbooks/deploy_k8s_production.yml --vault-password-file /home/ubuntu/nautobot_ansible_app/vault_pass.txt --tags generate_helm_values --limit onprem-k8s-master"
+
           scp -o StrictHostKeyChecking=no /home/ubuntu/nautobot_ansible_app/nautobot-values.yaml ubuntu@$MASTER_IP:/tmp/nautobot-deploy/nautobot-values.yaml
 
           # Deploy with Helm using the correct values file
