@@ -1,3 +1,15 @@
+# Ensure python3-pip and Docker SDK for Python are installed
+- name: Ensure python3-pip is installed (for docker SDK)
+  ansible.builtin.apt:
+    name: python3-pip
+    state: present
+    update_cache: yes
+
+- name: Ensure Docker SDK for Python is installed
+  ansible.builtin.pip:
+    name: docker
+    executable: pip3
+
 # ---
 # # tasks file for vm_postgres
 
@@ -41,7 +53,6 @@
 
 # - name: Reload PostgreSQL if configuration changed
 #   ansible.builtin.meta: flush_handlers
----
 # Detect if Docker is already installed
 - name: Check if Docker is installed
   ansible.builtin.command: which docker

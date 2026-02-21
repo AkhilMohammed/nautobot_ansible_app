@@ -1,30 +1,17 @@
-## Removed duplicate postgresql.livenessProbe and readinessProbe block; only the complete block at the bottom remains
-metrics:
+postgresql:
   enabled: true
-  prometheusRule:
-    enabled: false
-  serviceMonitor:
-    enabled: true  # Enable for Prometheus Operator
-    interval: 30s
-    scrapeTimeout: 10s
-    labels:
-      release: prometheus  # Match your Prometheus operator label
-    className: nginx
-    annotations:
-      # SSL/TLS Configuration
-      cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Change to your issuer
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-      nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
-      # Proxy settings
-      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-      nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
-      # Rate limiting
-      nginx.ingress.kubernetes.io/limit-rps: "100"
-      # Monitoring
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "10254"
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
 # Nautobot Helm Chart - Production Configuration
 # Last updated: 2026-02-17 - Plugin support fully functional
 # Plugins are automatically installed via init containers with device-lifecycle-mgmt v4.0.0
@@ -45,12 +32,6 @@ web:
     limits:
       cpu: 2000m
       memory: 2Gi
-  livenessProbe:
-    enabled: true
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
   nodeSelector: {}
   affinity:
     podAntiAffinity:
@@ -60,7 +41,11 @@ web:
             labelSelector:
               matchExpressions:
                 - key: app.kubernetes.io/component
-          topologyKey: kubernetes.io/hostname
+  tls:
+    - hosts:
+        - nautobot.local  # Change to your domain
+      secretName: nautobot-tls
+            topologyKey: kubernetes.io/hostname
   livenessProbe:
     enabled: false  # Temporarily disabled to speed up deployment
     httpGet:
@@ -164,6 +149,10 @@ postgresql:
       memory: 1Gi
     limits:
       cpu: 2000m
+      memory: 2Gi
+  nodeSelector: {}
+  livenessProbe:
+    enabled: true
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
@@ -317,9 +306,8 @@ ingress:
   host: nautobot.local  # Legacy single host for backward compatibility
   tls:
     - hosts:
-        - nautobot.local
+        - nautobot.local  # Change to your domain
       secretName: nautobot-tls
-  # tls block removed; only ingress.tls should exist
   certManager:
     enabled: false  # Disabled - using manual self-signed certificate
     issuer: selfsigned-issuer  # Self-signed Issuer name
@@ -392,4 +380,7 @@ metrics:
           - path: /
             pathType: Prefix
     host: nautobot.local  # Legacy single host for backward compatibility
-    # tls block removed; only ingress.tls should exist
+    tls:
+      - hosts:
+          - nautobot.local  # Change to your domain
+        secretName: nautobot-tls

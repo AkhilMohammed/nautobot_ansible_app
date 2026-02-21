@@ -1,0 +1,24 @@
+{{- if and .Values.ingress.enabled .Values.ingress.tls }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "nautobot.fullname" . }}-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "nautobot.fullname" . }}-tls-secret
+  issuerRef:
+    name: {{ .Values.ingress.certManager.issuer | default "letsencrypt-prod" }}
+    kind: {{ .Values.ingress.certManager.issuerKind | default "ClusterIssuer" }}
+  dnsNames:
+    {{- range .Values.ingress.hosts }}
+    - {{ .host | quote }}
+    {{- end }}
+  {{- with .Values.ingress.certManager.duration }}
+  duration: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.certManager.renewBefore }}
+  renewBefore: {{ . }}
+  {{- end }}
+{{- end }}

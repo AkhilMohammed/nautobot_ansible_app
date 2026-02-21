@@ -1,0 +1,50 @@
+# ClusterIssuer for Let's Encrypt (Production)
+# This manifest should be applied to the cluster before deploying Nautobot
+# kubectl apply -f clusterissuer.yaml
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # ACME server URL for Let's Encrypt production
+    server: https://acme-v02.api.letsencrypt.org/directory
+    
+    # Email address for ACME registration (update this!)
+    email: admin@nautobot.local  # Update with your actual email for production
+    
+    # Secret to store ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    
+    # ACME challenge solver configuration
+    solvers:
+      # HTTP-01 challenge via Ingress
+      - http01:
+          ingress:
+            class: nginx
+---
+# ClusterIssuer for Let's Encrypt (Staging - for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # ACME server URL for Let's Encrypt staging (testing)
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    
+    # Email address for ACME registration
+    email: admin@nautobot.local  # Update with your actual email for production
+    
+    # Secret to store ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    
+    # ACME challenge solver configuration
+    solvers:
+      # HTTP-01 challenge via Ingress
+      - http01:
+          ingress:
+            class: nginx

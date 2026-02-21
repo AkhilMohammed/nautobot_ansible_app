@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nautobot-web
+  name: nautobot-worker
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "nautobot.labels" . | nindent 4 }}
-    app.kubernetes.io/component: web
+    app.kubernetes.io/component: worker
 spec:
-  replicas: {{ .Values.web.replicas }}
+  replicas: {{ .Values.worker.replicas }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -16,12 +16,12 @@ spec:
   selector:
     matchLabels:
       {{- include "nautobot.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: web
+      app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
         {{- include "nautobot.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: web
+        app.kubernetes.io/component: worker
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
@@ -30,12 +30,10 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-
       containers:
-        - name: nautobot-web
+        - name: nautobot-worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-
           {{- if .Values.nautobot.plugins.enabled }}
           command:
             - sh
@@ -43,79 +41,48 @@ spec:
             - |
               set -e
               echo "==> Installing Git plugins at runtime..."
-
               if ! command -v git >/dev/null 2>&1; then
                 echo "Installing git..."
                 apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || true
               fi
-
               {{- range .Values.nautobot.plugins.packages }}
               echo "Installing: {{ .name }}"
-              pip install --no-cache-dir {{ .name }} || (echo "ERROR installing {{ .name }}" && exit 1)
+              pip install --no-cache-dir {{ .name }} || (echo "ERROR: Failed to install {{ .name }}" && exit 1)
               {{- end }}
-
-              echo "==> ✓ Plugins installed"
-
+              echo "==> ✓ All plugins installed successfully!"
+              
+              echo "==> Configuring plugins (creating writable copy)..."
               cp /opt/nautobot/nautobot_config.py /tmp/nautobot_config.py
               cat >> /tmp/nautobot_config.py << 'PLUGIN_EOF'
-
+              
+              # Plugins - Dynamically configured after runtime installation
               PLUGINS = [
               {{- range .Values.nautobot.plugins.packages }}
                   "{{ .module }}",
               {{- end }}
               ]
-
+              
               PLUGINS_CONFIG = {{ .Values.nautobot.plugins.config | toJson }}
               PLUGIN_EOF
-
+              
               export NAUTOBOT_CONFIG=/tmp/nautobot_config.py
-
-              nautobot-server migrate --no-input
-              nautobot-server collectstatic --no-input --clear
-
-              exec nautobot-server start --ini /opt/nautobot/uwsgi.ini
+              echo "==> ✓ Plugins configured!"
+              echo "==> Starting Celery worker..."
+              exec nautobot-server celery worker -l {{ .Values.nautobot.logLevel }} --events
           {{- else }}
           command:
             - nautobot-server
           args:
-            - start
-            - --ini
-            - /opt/nautobot/uwsgi.ini
+            - celery
+            - worker
+            - -l
+            - {{ .Values.nautobot.logLevel }}
+            - --events
           {{- end }}
-
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
-
           env:
             {{- include "nautobot.env" . | nindent 12 }}
-
-          {{- if .Values.web.livenessProbe.enabled }}
-          livenessProbe:
-            httpGet:
-              path: {{ .Values.web.livenessProbe.httpGet.path }}
-              port: {{ .Values.web.livenessProbe.httpGet.port }}
-            initialDelaySeconds: {{ .Values.web.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.web.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.web.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.web.livenessProbe.failureThreshold }}
-          {{- end }}
-
-          {{- if .Values.web.readinessProbe.enabled }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.web.readinessProbe.httpGet.path }}
-              port: {{ .Values.web.readinessProbe.httpGet.port }}
-            initialDelaySeconds: {{ .Values.web.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.web.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.web.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.web.readinessProbe.failureThreshold }}
-          {{- end }}
-
           resources:
-            {{- toYaml .Values.web.resources | nindent 12 }}
-
+            {{- toYaml .Values.worker.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /opt/nautobot/nautobot_config.py
@@ -126,18 +93,14 @@ spec:
               mountPath: /opt/nautobot/git
             - name: plugins
               mountPath: /opt/python-packages
-
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-
       volumes:
         - name: plugins
           emptyDir: {}
-
         - name: config
           configMap:
             name: nautobot-config
-
         - name: media
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
@@ -145,7 +108,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-
         - name: git
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
@@ -153,13 +115,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-
-      {{- with .Values.web.nodeSelector }}
+      {{- with .Values.worker.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
-      {{- with .Values.web.affinity }}
+      {{- with .Values.worker.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}

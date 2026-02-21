@@ -14,25 +14,19 @@ spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
   {{- end }}
-  {{- if .Values.ingress.tls.enabled }}
+  {{- if .Values.ingress.tls }}
   tls:
+    {{- range .Values.ingress.tls }}
     - hosts:
-        - {{ .Values.ingress.host }}
-      secretName: {{ .Values.ingress.tls.secretName }}
+        {{- range .hosts }}
+        - {{ . }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
   {{- end }}
   rules:
     - host: {{ .Values.ingress.host }}
       http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: nautobot
-                port:
-                  number: {{ .Values.service.port }}
-    # Default rule for direct IP access
-    - http:
         paths:
           - path: /
             pathType: Prefix

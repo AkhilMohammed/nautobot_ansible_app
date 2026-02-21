@@ -1,4 +1,41 @@
-# ...existing code...
+
+- name: Ensure problematic Helm template is removed (job-pre-install.yaml)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove job-pre-install.yaml if present
+      ansible.builtin.file:
+        path: /home/{{ ansible_user }}/nautobot_ansible_app/helm/nautobot/templates/job-pre-install.yaml
+        state: absent
+      delegate_to: onprem-k8s-master
+      become: true
+      ignore_errors: true
+
+- name: Patch Helm values and templates for robust deployment
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Patch nautobot-values.yaml for ingress.tls
+      ansible.builtin.blockinfile:
+        path: /home/ubuntu/nautobot_ansible_app/nautobot-values.yaml
+        block: |
+          ingress:
+            enabled: true
+            className: nginx
+            host: nautobot.local
+            tls:
+              - hosts:
+                  - nautobot.local
+                secretName: nautobot-tls
+        state: present
+
+
+    - name: Remove duplicate Ingress resource block from ingress.yaml
+      ansible.builtin.lineinfile:
+        path: /home/ubuntu/nautobot_ansible_app/helm/nautobot/templates/ingress.yaml
+        regexp: '^apiVersion: networking.k8s.io/v1$'
+        state: absent
+
 
 # Always fetch kubelet logs on failure for all nodes (run as a separate play at the end)
 - name: Always fetch kubelet logs on failure
@@ -2211,14 +2248,14 @@
   tasks:
     - name: Create Helm charts directory
       ansible.builtin.file:
-        path: "/home/{{ ansible_user }}/nautobot-helm"
+        path: "/home/{{ ansible_user }}/nautobot_ansible_app/helm/nautobot"
         state: directory
         mode: '0755'
 
     - name: Copy Helm chart to master
       ansible.builtin.copy:
         src: "../helm/nautobot/"
-        dest: "/home/{{ ansible_user }}/nautobot-helm/"
+        dest: "/home/{{ ansible_user }}/nautobot_ansible_app/helm/nautobot/"
         mode: '0644'
 
     - name: Create nautobot namespace
@@ -2244,6 +2281,7 @@
         plugin_packages_list: "{{ nautobot_git_packages | default([]) | map(attribute='module_name') | list }}"
         plugin_git_urls: "{{ nautobot_git_packages | default([]) | map(attribute='name') | list }}"
       when: nautobot_git_packages is defined
+      tags: [quickcheck]
 
     - name: Display detected plugins
       ansible.builtin.debug:
@@ -2254,10 +2292,10 @@
 
     - name: Create Helm values file with plugins
       ansible.builtin.template:
-        src: ../templates/nautobot-helm-values.yaml.j2
+        src: ../templates/nautobot-helm-values.yaml.j2  # (no change, just context)
         dest: /home/{{ ansible_user }}/nautobot-values.yaml
         mode: '0644'
-      tags: [generate_helm_values]
+      tags: [generate_helm_values, quickcheck]
 
     - name: Clean up manually created TLS resources (prevents Helm conflicts)
       ansible.builtin.shell: |
@@ -2292,7 +2330,7 @@
 
     - name: Deploy Nautobot with Helm (with plugins from nautobot.yml)
       ansible.builtin.command: >
-        helm upgrade --install nautobot /home/{{ ansible_user }}/nautobot-helm
+        helm upgrade --install nautobot /home/{{ ansible_user }}/nautobot_ansible_app/helm/nautobot
         --namespace nautobot
         --values /home/{{ ansible_user }}/nautobot-values.yaml
         --set database.host=nautobot-postgresql
@@ -2375,7 +2413,7 @@
           - "🔧 Management Operations:"
           - "  Scale Web: kubectl scale -n nautobot deployment/nautobot-web --replicas=4"
           - "  Scale Workers: kubectl scale -n nautobot deployment/nautobot-worker --replicas=4"
-          - "  Update: helm upgrade nautobot ./nautobot-helm -n nautobot --wait"
+          - "  Update: helm upgrade nautobot /home/{{ ansible_user }}/nautobot_ansible_app/helm/nautobot -n nautobot --wait"
           - "  Rollback: helm rollback nautobot -n nautobot"
           - "  Status: helm status nautobot -n nautobot"
           - ""

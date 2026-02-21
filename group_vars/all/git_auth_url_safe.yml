@@ -1,0 +1,4 @@
+# Default value for git_auth_url_safe to prevent undefined errors
+# Set this to your actual Git token or prefix as needed
+
+git_auth_url_safe: ""  # TODO: Set this to your actual Git token or prefix for production use

@@ -4,8 +4,7 @@
 
 all:
   vars:
-    # Use ansible-ci key if present, fallback to id_rsa
-    ansible_ssh_private_key_file: "{{ lookup('first_found', params={'files': ['~/.ssh/ansible-ci', '~/.ssh/id_rsa'], 'errors': 'ignore'}) }}"
+    ansible_ssh_private_key_file: "~/.ssh/ansible-ci"
   children:
     # Kubernetes Control Plane (Master + Load Balancer)
     k8s_control_plane:
@@ -57,6 +56,8 @@ all:
           ansible_host: 172.17.152.107  # PostgreSQL VM
           ansible_user: ubuntu
           deploy_env: onprem
+          ansible_become: true
+          ansible_become_method: sudo
 
     # Redis VM (outside K8s)
     redis:
@@ -82,7 +83,4 @@ all:
         deploy_env: onprem
         kubeconfig_path: "/home/ubuntu/.kube/config"
 
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-    ansible_ssh_private_key_file: "~/.ssh/id_rsa"
+  # Removed duplicate vars section to avoid overriding ansible_ssh_private_key_file

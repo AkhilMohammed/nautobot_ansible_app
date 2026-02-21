@@ -83,6 +83,8 @@ github_runner_name: "onprem-runner-01"  # Name for the self-hosted runner
 # 3. Install/update plugins
 # 4. Run migrations
 # 5. Restart services
+# Ensure git_auth_url_safe is defined for onprem
+git_auth_url_safe: ""  # TODO: Set this to your actual Git token or prefix for onprem
 #
 # Example Usage:
 # 1. Add a plugin to the list below

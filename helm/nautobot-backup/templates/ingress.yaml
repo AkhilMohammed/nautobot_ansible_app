@@ -1,0 +1,94 @@
+{{/* DEBUG: Print the type and value of ingress.tls for troubleshooting */}}
+{{- printf "ingress.tls type: %T, value: %v" .Values.ingress.tls .Values.ingress.tls | quote | indent 0 }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nautobot
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautobot
+                port:
+                  number: {{ .Values.service.port }}
+    # Default rule for direct IP access
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautobot
+                port:
+                  number: {{ .Values.service.port }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nautobot
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautobot
+                port:
+                  number: {{ .Values.service.port }}
+    # Default rule for direct IP access
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautobot
+                port:
+                  number: {{ .Values.service.port }}

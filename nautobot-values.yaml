@@ -1,0 +1,256 @@
+# Ensure all keys used in --set are present
+database:
+  host: nautobot-postgresql
+  port: 5432
+  name: nautobot
+redis:
+  host: nautobot-redis
+  port: 6379
+ingress:
+  enabled: true
+  className: nginx
+  host: nautobot.local
+  tls:
+    - hosts:
+        - nautobot.local
+      secretName: nautobot-tls
+# Minimal top-level keys to ensure .Values is a map for Helm
+image:
+  repository: networktocode/nautobot
+  tag: "3.0.6-py3.11"
+  pullPolicy: IfNotPresent
+nautobot:
+  plugins:
+    enabled: true
+    packages:
+      - name: nautobot-device-lifecycle-mgmt
+        module: nautobot_device_lifecycle_mgmt
+        version: ""
+      - name: nautobot-bgp-models
+        module: nautobot_bgp_models
+        version: ""
+      - name: nautobot-dns-manager
+        module: nautobot_dns_manager
+        version: ""
+    config:
+      nautobot_device_lifecycle_mgmt: {}
+      nautobot_bgp_models: {}
+      nautobot_dns_manager: {}
+persistence:
+  enabled: true
+  storageClass: "local-path"
+  static:
+    size: 2Gi
+    accessMode: ReadWriteOnce
+  media:
+    size: 10Gi
+    accessMode: ReadWriteOnce
+  git:
+    size: 5Gi
+    accessMode: ReadWriteOnce
+# This is a production override values file for Nautobot Helm deployment.
+# It ensures all required probe keys are present to avoid Helm nil pointer errors.
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+    pullPolicy: IfNotPresent
+  database: nautobot
+  existingSecret: nautobot-secrets
+  usernameKey: db-user
+  passwordKey: db-password
+  service:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: "local-path"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # Ensure all keys are present to avoid nil pointer errors
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+ingress:
+  enabled: true
+  className: nginx
+  host: nautobot.local
+  tls:
+    - hosts:
+        - nautobot.local
+      secretName: nautobot-tls
+ingress:
+  enabled: true
+  className: nginx
+  host: nautobot.local
+  tls:
+    - hosts:
+        - nautobot.local
+      secretName: nautobot-tls
+image:
+  repository: networktocode/nautobot
+  tag: "3.0.6-py3.11"
+  pullPolicy: IfNotPresent
+nautobot:
+  plugins:
+    enabled: true
+    packages:
+      - name: nautobot-device-lifecycle-mgmt
+        module: nautobot_device_lifecycle_mgmt
+        version: ""
+      - name: nautobot-bgp-models
+        module: nautobot_bgp_models
+        version: ""
+      - name: nautobot-dns-manager
+        module: nautobot_dns_manager
+        version: ""
+    config:
+      nautobot_device_lifecycle_mgmt: {}
+      nautobot_bgp_models: {}
+      nautobot_dns_manager: {}
+web:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+persistence:
+  enabled: true
+  storageClass: "local-path"
+  static:
+    size: 2Gi
+    accessMode: ReadWriteOnce
+  media:
+    size: 10Gi
+    accessMode: ReadWriteOnce
+  git:
+    size: 5Gi
+    accessMode: ReadWriteOnce
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+    pullPolicy: IfNotPresent
+  database: nautobot
+  existingSecret: nautobot-secrets
+  usernameKey: db-user
+  passwordKey: db-password
+  service:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: "local-path"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+serviceAccount:
+  create: true
+  name: nautobot
+podSecurityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsNonRoot: true
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+ingress:
+  enabled: true
+  className: nginx
+  host: nautobot.local
+  tls:
+    - hosts:
+        - nautobot.local
+      secretName: nautobot-tls
+# BEGIN ANSIBLE MANAGED BLOCK
+ingress:
+  enabled: true
+  className: nginx
+  host: nautobot.local
+  tls:
+    - hosts:
+        - nautobot.local
+      secretName: nautobot-tls
+# END ANSIBLE MANAGED BLOCK

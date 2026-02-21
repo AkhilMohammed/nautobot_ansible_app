@@ -1,0 +1,25 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nautobot.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nautobot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+  {{- with .Values.redis.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.redis.service.type }}
+  ports:
+    - name: redis
+      port: {{ .Values.redis.service.port }}
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- include "nautobot.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+  sessionAffinity: None
+{{- end }}

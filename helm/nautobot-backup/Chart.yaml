@@ -1,0 +1,17 @@
+apiVersion: v2
+name: nautobot
+description: Production-ready Nautobot deployment on Kubernetes
+type: application
+version: 1.0.0
+appVersion: "3.0.6"
+keywords:
+  - nautobot
+  - network
+  - automation
+  - ipam
+  - dcim
+home: https://nautobot.com
+sources:
+  - https://github.com/nautobot/nautobot
+maintainers:
+  - name: Nautobot Team

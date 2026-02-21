@@ -7,112 +7,112 @@ metadata:
     {{- include "nautobot.labels" . | nindent 4 }}
 data:
   nautobot_config.py: |
-    import os
-    from nautobot.core.settings import *
-    from nautobot.core.settings_funcs import is_truthy, parse_redis_connection
-    
-    # Basic Configuration
-    ALLOWED_HOSTS = {{ .Values.nautobot.allowedHosts | toJson }}
-    DEBUG = {{ if .Values.nautobot.debug }}True{{ else }}False{{ end }}
-    
-    # Database Configuration
-    DATABASES = {
-        "default": {
-            "NAME": os.getenv("NAUTOBOT_DB_NAME", "{{ .Values.database.name }}"),
-            "USER": os.getenv("NAUTOBOT_DB_USER", "nautobot"),
-            "PASSWORD": os.getenv("NAUTOBOT_DB_PASSWORD", ""),
-            {{- if .Values.postgresql.enabled }}
-            "HOST": os.getenv("NAUTOBOT_DB_HOST", "{{ include "nautobot.fullname" . }}-postgresql.{{ .Release.Namespace }}.svc.cluster.local"),
-            {{- else }}
-            "HOST": os.getenv("NAUTOBOT_DB_HOST", "{{ .Values.database.host }}"),
-            {{- end }}
-            "PORT": os.getenv("NAUTOBOT_DB_PORT", "{{ .Values.database.port }}"),
-            "ENGINE": "{{ .Values.database.engine }}",
-            "CONN_MAX_AGE": 300,
-            "OPTIONS": {"sslmode": "prefer"},
-        }
-    }
-    
-    # Redis Configuration
-    {{- if .Values.redis.enabled }}
-    REDIS_HOST = "{{ include "nautobot.fullname" . }}-redis.{{ .Release.Namespace }}.svc.cluster.local"
-    {{- else }}
-    REDIS_HOST = "{{ .Values.redis.host }}"
-    {{- end }}
-    REDIS_PORT = {{ .Values.redis.service.port | default .Values.redis.port }}
-    {{- if .Values.redis.password }}
-    REDIS_PASSWORD = os.getenv("NAUTOBOT_REDIS_PASSWORD", "")
-    {{- end }}
-    
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                {{- if .Values.redis.password }}
-                "PASSWORD": os.getenv("NAUTOBOT_REDIS_PASSWORD", ""),
+    {{- if .Values.nautobot }}
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: nautobot-config
+      namespace: {{ .Release.Namespace }}
+      labels:
+        {{- include "nautobot.labels" . | nindent 4 }}
+    data:
+      nautobot_config.py: |
+        import os
+        from nautobot.core.settings import *
+        from nautobot.core.settings_funcs import is_truthy, parse_redis_connection
+        # Basic Configuration
+        ALLOWED_HOSTS = {{ .Values.nautobot.allowedHosts | toJson }}
+        DEBUG = {{ if .Values.nautobot.debug }}True{{ else }}False{{ end }}
+        # Database Configuration
+        DATABASES = {
+            "default": {
+                "NAME": os.getenv("NAUTOBOT_DB_NAME", "{{ .Values.database.name }}"),
+                "USER": os.getenv("NAUTOBOT_DB_USER", "nautobot"),
+                "PASSWORD": os.getenv("NAUTOBOT_DB_PASSWORD", ""),
+                {{- if .Values.postgresql.enabled }}
+                "HOST": os.getenv("NAUTOBOT_DB_HOST", "{{ include "nautobot.fullname" . }}-postgresql.{{ .Release.Namespace }}.svc.cluster.local"),
+                {{- else }}
+                "HOST": os.getenv("NAUTOBOT_DB_HOST", "{{ .Values.database.host }}"),
                 {{- end }}
+                "PORT": os.getenv("NAUTOBOT_DB_PORT", "{{ .Values.database.port }}"),
+                "ENGINE": "{{ .Values.database.engine }}",
+                "CONN_MAX_AGE": 300,
+                "OPTIONS": {"sslmode": "prefer"},
+            }
+        }
+        # Redis Configuration
+        {{- if .Values.redis.enabled }}
+        REDIS_HOST = "{{ include "nautobot.fullname" . }}-redis.{{ .Release.Namespace }}.svc.cluster.local"
+        {{- else }}
+        REDIS_HOST = "{{ .Values.redis.host }}"
+        {{- end }}
+        REDIS_PORT = {{ .Values.redis.service.port | default .Values.redis.port }}
+        {{- if .Values.redis.password }}
+        REDIS_PASSWORD = os.getenv("NAUTOBOT_REDIS_PASSWORD", "")
+        {{- end }}
+        CACHES = {
+            "default": {
+                "BACKEND": "django_redis.cache.RedisCache",
+                "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",
+                "OPTIONS": {
+                    "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                    {{- if .Values.redis.password }}
+                    "PASSWORD": os.getenv("NAUTOBOT_REDIS_PASSWORD", ""),
+                    {{- end }}
+                },
+            }
+        }
+        # Celery Configuration
+        {{- if .Values.redis.password }}
+        CELERY_BROKER_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
+        CELERY_RESULT_BACKEND = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1"
+        {{- else }}
+        CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+        CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
+        {{- end }}
+        # Secret Key
+        SECRET_KEY = os.getenv("NAUTOBOT_SECRET_KEY", "")
+        # Storage Configuration
+        MEDIA_ROOT = "/opt/nautobot/media"
+        STATIC_ROOT = "/opt/nautobot/static"
+        GIT_ROOT = "/opt/nautobot/git"
+        # Logging
+        LOG_LEVEL = "{{ .Values.nautobot.logLevel }}"
+        LOGGING = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "normal": {
+                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+                },
+                "verbose": {
+                    "format": "%(asctime)s [%(levelname)s] %(name)s (%(module)s:%(funcName)s:%(lineno)d): %(message)s"
+                },
+            },
+            "handlers": {
+                "console": {
+                    "level": LOG_LEVEL,
+                    "class": "logging.StreamHandler",
+                    "formatter": "normal",
+                },
+            },
+            "root": {
+                "handlers": ["console"],
+                "level": LOG_LEVEL,
             },
         }
-    }
-    
-    # Celery Configuration
-    {{- if .Values.redis.password }}
-    CELERY_BROKER_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
-    CELERY_RESULT_BACKEND = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1"
-    {{- else }}
-    CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
-    CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
+        # Metrics
+        METRICS_ENABLED = {{ if .Values.nautobot.metricsEnabled }}True{{ else }}False{{ end }}
+        # Plugins - Will be configured dynamically after runtime installation
+        # Do not set PLUGINS here as they're installed at container startup
+        {{- if not .Values.nautobot.plugins.enabled }}
+        PLUGINS = []
+        PLUGINS_CONFIG = {}
+        {{- end }}
+        # Session and CSRF
+        SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
+        CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
+        # Time zone
+        TIME_ZONE = "UTC"
     {{- end }}
-    
-    # Secret Key
-    SECRET_KEY = os.getenv("NAUTOBOT_SECRET_KEY", "")
-    
-    # Storage Configuration
-    MEDIA_ROOT = "/opt/nautobot/media"
-    STATIC_ROOT = "/opt/nautobot/static"
-    GIT_ROOT = "/opt/nautobot/git"
-    
-    # Logging
-    LOG_LEVEL = "{{ .Values.nautobot.logLevel }}"
-    LOGGING = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "normal": {
-                "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-            },
-            "verbose": {
-                "format": "%(asctime)s [%(levelname)s] %(name)s (%(module)s:%(funcName)s:%(lineno)d): %(message)s"
-            },
-        },
-        "handlers": {
-            "console": {
-                "level": LOG_LEVEL,
-                "class": "logging.StreamHandler",
-                "formatter": "normal",
-            },
-        },
-        "root": {
-            "handlers": ["console"],
-            "level": LOG_LEVEL,
-        },
-    }
-    
-    # Metrics
-    METRICS_ENABLED = {{ if .Values.nautobot.metricsEnabled }}True{{ else }}False{{ end }}
-    
-    # Plugins - Will be configured dynamically after runtime installation
-    # Do not set PLUGINS here as they're installed at container startup
-    {{- if not .Values.nautobot.plugins.enabled }}
-    PLUGINS = []
-    PLUGINS_CONFIG = {}
-    {{- end }}
-    
-    # Session and CSRF
-    SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
-    CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
-    
-    # Time zone
-    TIME_ZONE = "UTC"
+        PLUGINS_CONFIG = {}

@@ -54,28 +54,30 @@ spec:
           volumeMounts:
             - name: postgresql-data
               mountPath: /var/lib/postgresql/data
-          {{- $lprobe := .Values.postgresql.livenessProbe | default (dict "enabled" true "initialDelaySeconds" 30 "periodSeconds" 10 "timeoutSeconds" 5 "failureThreshold" 3) }}
-          {{- $rprobe := .Values.postgresql.readinessProbe | default (dict "enabled" true "initialDelaySeconds" 10 "periodSeconds" 5 "timeoutSeconds" 3 "failureThreshold" 3) }}
+          {{- if .Values.postgresql.livenessProbe.enabled }}
           livenessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
                 - pg_isready -U $POSTGRES_USER
-            initialDelaySeconds: {{ $lprobe.initialDelaySeconds }}
-            periodSeconds: {{ $lprobe.periodSeconds }}
-            timeoutSeconds: {{ $lprobe.timeoutSeconds }}
-            failureThreshold: {{ $lprobe.failureThreshold }}
+            initialDelaySeconds: {{ .Values.postgresql.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.postgresql.readinessProbe.enabled }}
           readinessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
                 - pg_isready -U $POSTGRES_USER
-            initialDelaySeconds: {{ $rprobe.initialDelaySeconds }}
-            periodSeconds: {{ $rprobe.periodSeconds }}
-            timeoutSeconds: {{ $rprobe.timeoutSeconds }}
-            failureThreshold: {{ $rprobe.failureThreshold }}
+            initialDelaySeconds: {{ .Values.postgresql.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.readinessProbe.failureThreshold }}
+          {{- end }}
       {{- with .Values.postgresql.securityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
